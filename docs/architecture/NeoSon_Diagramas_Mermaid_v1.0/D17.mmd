@@ -1,0 +1,18 @@
+flowchart LR
+    BRANCH[Feature branch]
+    PR[Pull request]
+    LINT[Ruff, mypy e testes]
+    SECURITY[Scan de segredos e dependências]
+    BUILD[Build e integração]
+    APPROVE[Revisão e aprovação]
+    DEPLOY[Deploy no notebook]
+    SMOKE[Smoke tests e health checks]
+    ROLLBACK[Rollback se falhar]
+    BRANCH --> PR
+    PR --> LINT
+    LINT --> SECURITY
+    SECURITY --> BUILD
+    BUILD --> APPROVE
+    APPROVE --> DEPLOY
+    DEPLOY --> SMOKE
+    SMOKE -->|Falha| ROLLBACK

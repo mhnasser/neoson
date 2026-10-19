@@ -1,0 +1,19 @@
+flowchart TD
+    ASK[Solicitação]
+    INDEX[Índice: nome, descrição e gatilhos]
+    MATCH{Existe skill relevante?}
+    LOAD[Carregar SKILL.md e versão aprovada]
+    CONTEXT[Incluir procedimento no contexto]
+    NORMAL[Continuar sem skill]
+    LOOP[Agent Loop e ferramentas autorizadas]
+    CHECK[Verificar resultado por critério objetivo]
+    EVENT[Registrar skill_id, versão, sucesso e custo]
+    ASK --> INDEX
+    INDEX --> MATCH
+    MATCH -->|Sim| LOAD
+    MATCH -->|Não| NORMAL
+    LOAD --> CONTEXT
+    CONTEXT --> LOOP
+    NORMAL --> LOOP
+    LOOP --> CHECK
+    CHECK --> EVENT

@@ -1,0 +1,28 @@
+flowchart TD
+    START[Receber RunContext]
+    CHECK[Checar limites e prazo]
+    PROMPT[Montar prompt incremental]
+    LLM[Chamar LLM]
+    DECIDE{Resposta do modelo}
+    TOOL[Validar tool na Policy Engine]
+    APPROVAL{Exige aprovação?}
+    EXEC[Executar tool e registrar resultado]
+    SUB[Executar subagente isolado]
+    SKILL[Carregar skill relevante]
+    END[Persistir resposta e evento final]
+    STOP[Encerrar com erro controlado]
+    START --> CHECK
+    CHECK -->|Orçamento ok| PROMPT
+    CHECK -->|Limite atingido| STOP
+    PROMPT --> LLM
+    LLM --> DECIDE
+    DECIDE -->|Texto final| END
+    DECIDE -->|Tool call| TOOL
+    TOOL --> APPROVAL
+    APPROVAL -->|Autorizado| EXEC
+    APPROVAL -->|Negado| PROMPT
+    EXEC --> CHECK
+    DECIDE -->|Delegação| SUB
+    SUB --> CHECK
+    DECIDE -->|Skill sob demanda| SKILL
+    SKILL --> PROMPT

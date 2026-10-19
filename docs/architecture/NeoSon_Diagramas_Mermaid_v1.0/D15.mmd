@@ -1,0 +1,18 @@
+flowchart TD
+    CALL[LLM solicita tool]
+    REG[Registry valida nome e schema]
+    AUTH[Policy Engine consulta identidade e escopo]
+    RISK{Nível de risco}
+    EXEC[Executar com timeout e auditoria]
+    ASK[Solicitar consentimento explícito]
+    DENY[Negar e registrar motivo]
+    CONF{Aprovado?}
+    CALL --> REG
+    REG --> AUTH
+    AUTH --> RISK
+    RISK -->|Leitura permitida| EXEC
+    RISK -->|Escrita sensível| ASK
+    RISK -->|Proibido| DENY
+    ASK --> CONF
+    CONF -->|Sim| EXEC
+    CONF -->|Não| DENY

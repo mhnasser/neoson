@@ -1,0 +1,14 @@
+flowchart TD
+    RUNS[Runs, tools, tokens e custos]
+    DB[(SQLite - fatos operacionais)]
+    AGG[Metrics Aggregator]
+    EXPORT[Markdown Exporter - escrita atômica]
+    VAULT[NeoSon Vault]
+    BASES[Bases e Dataview]
+    CHART[Gráficos e relatórios]
+    RUNS --> DB
+    DB --> AGG
+    AGG --> EXPORT
+    EXPORT --> VAULT
+    VAULT --> BASES
+    BASES --> CHART

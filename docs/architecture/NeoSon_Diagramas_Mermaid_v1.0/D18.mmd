@@ -1,0 +1,18 @@
+flowchart LR
+    CLI[CLI ou Telegram]
+    GW[Gateway]
+    ROUTE[Router por regras]
+    LOOP[NeoSon Core]
+    LLM[Modelo via API]
+    TOOL[Tool mock de agenda]
+    DB[(SQLite e outbox)]
+    WORK[Worker de eventos]
+    NOTE[Nota de métricas no Obsidian]
+    CLI --> GW
+    GW --> ROUTE
+    ROUTE --> LOOP
+    LOOP --> LLM
+    LOOP --> TOOL
+    LOOP --> DB
+    DB --> WORK
+    WORK --> NOTE

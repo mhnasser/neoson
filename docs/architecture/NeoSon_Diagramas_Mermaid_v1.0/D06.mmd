@@ -1,0 +1,23 @@
+flowchart TD
+    IN[Mensagem e contexto de sessão]
+    RULE[Router: regras e classificador opcional]
+    DEC{Sessão existente?}
+    FIX[Manter modelo principal estável]
+    SELECT[Escolher perfil inicial de modelo]
+    ACT{O que a tarefa exige?}
+    DIRECT[Resposta ou tool direta]
+    DELEGATE[Subagente com contexto reduzido]
+    MEMORY[Busca de memória ou skill]
+    MEASURE[Medir qualidade, tokens, cache, custo e latência]
+    IN --> RULE
+    RULE --> DEC
+    DEC -->|Sim| FIX
+    DEC -->|Não| SELECT
+    FIX --> ACT
+    SELECT --> ACT
+    ACT -->|Simples| DIRECT
+    ACT -->|Complexa| DELEGATE
+    ACT -->|Conhecimento anterior| MEMORY
+    DIRECT --> MEASURE
+    DELEGATE --> MEASURE
+    MEMORY --> MEASURE

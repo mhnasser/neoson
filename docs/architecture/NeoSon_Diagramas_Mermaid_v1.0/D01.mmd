@@ -1,0 +1,40 @@
+flowchart TB
+    PI[NeoSon Robot - Raspberry Pi]
+    TG[Telegram]
+    WEB[Web e CLI]
+    GW[NeoSon Gateway]
+    ROUTER[NeoSon Router]
+    CORE[NeoSon Core - Agent Loop]
+    CTX[Context Builder]
+    SK[Skill Registry e Loader]
+    TOOL[Tool Registry e Policy Engine]
+    SUB[Subagent Manager]
+    LLM[LLM Adapter]
+    DB[(SQLite - sessões, traces e outbox)]
+    MEM[Memory Service]
+    NEO[(Neo4j - grafo)]
+    VAULT[NeoSon Vault - Obsidian]
+    WORK[Learning Workers]
+    DASH[Metrics Exporter]
+    EXT[APIs externas e MCP]
+    MODELS[Provedores de LLM]
+    PI --> GW
+    TG --> GW
+    WEB --> GW
+    GW --> ROUTER
+    ROUTER --> CTX
+    CTX --> CORE
+    SK --> CTX
+    MEM --> CTX
+    CORE --> TOOL
+    CORE --> SUB
+    CORE --> LLM
+    TOOL --> EXT
+    LLM --> MODELS
+    CORE --> DB
+    DB --> WORK
+    WORK --> MEM
+    MEM --> NEO
+    MEM --> VAULT
+    DB --> DASH
+    DASH --> VAULT

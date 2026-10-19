@@ -1,0 +1,14 @@
+stateDiagram-v2
+    [*] --> received
+    received --> routing
+    routing --> context_ready
+    context_ready --> running
+    running --> waiting_approval
+    waiting_approval --> running: aprovado
+    waiting_approval --> cancelled: negado ou expirado
+    running --> completed
+    running --> failed
+    running --> cancelled
+    completed --> [*]
+    failed --> [*]
+    cancelled --> [*]

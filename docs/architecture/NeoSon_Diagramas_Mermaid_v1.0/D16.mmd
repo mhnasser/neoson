@@ -1,0 +1,22 @@
+flowchart TD
+    DATA[Casos rotulados e versionados]
+    BASE[Baseline - modelo único]
+    RULE[Política por regras]
+    ML[Classificador opcional - Laya]
+    RUN[Testes reproduzíveis]
+    SCORE[Qualidade, custo e latência]
+    REPORT[Relatório no Obsidian]
+    GATE{Supera critérios e segurança?}
+    RELEASE[Publicar política versionada]
+    HOLD[Revisar ou manter atual]
+    DATA --> BASE
+    DATA --> RULE
+    DATA --> ML
+    BASE --> RUN
+    RULE --> RUN
+    ML --> RUN
+    RUN --> SCORE
+    SCORE --> REPORT
+    SCORE --> GATE
+    GATE -->|Sim| RELEASE
+    GATE -->|Não| HOLD

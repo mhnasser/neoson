@@ -1,0 +1,26 @@
+flowchart TD
+    DONE[Run finalizado]
+    OUTBOX[Evento durável no SQLite]
+    WORK[Learning Worker]
+    CLASS[Classificar tipo de aprendizado]
+    FACT[Memory Consolidator]
+    SKILL[Skill Curator]
+    ROUTER[Router Evaluator]
+    TESTS[Suite de avaliações]
+    REVIEW[Validação e revisão]
+    GRAPH[Neo4j e Obsidian]
+    LIB[Skill Library aprovada]
+    POLICY[Política de roteamento versionada]
+    DONE --> OUTBOX
+    OUTBOX --> WORK
+    WORK --> CLASS
+    CLASS --> FACT
+    CLASS --> SKILL
+    CLASS --> ROUTER
+    FACT --> REVIEW
+    SKILL --> TESTS
+    ROUTER --> TESTS
+    TESTS --> REVIEW
+    REVIEW --> GRAPH
+    REVIEW --> LIB
+    REVIEW --> POLICY

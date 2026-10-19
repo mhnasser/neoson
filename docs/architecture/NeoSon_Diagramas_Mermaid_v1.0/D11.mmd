@@ -1,0 +1,19 @@
+flowchart TD
+    FILE[PDF, artigo ou documento recebido]
+    RAW[Salvar original com hash e metadados]
+    EXTRACT[Extrair texto e detectar falhas]
+    CLEAN[Normalizar e dividir conteúdo]
+    SUM[Resumo com fonte e links]
+    REVIEW[Revisão de qualidade e permissões]
+    NOTE[Gerar nota Markdown no Obsidian]
+    GRAPH[Extrair entidades e relações no Neo4j]
+    INDEX[Atualizar índice de recuperação]
+    FILE --> RAW
+    RAW --> EXTRACT
+    EXTRACT --> CLEAN
+    CLEAN --> SUM
+    SUM --> REVIEW
+    REVIEW --> NOTE
+    REVIEW --> GRAPH
+    NOTE --> INDEX
+    GRAPH --> INDEX

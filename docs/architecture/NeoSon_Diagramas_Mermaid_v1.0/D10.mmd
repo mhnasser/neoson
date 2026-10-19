@@ -1,0 +1,16 @@
+flowchart TD
+    ASK[Pedido do usuário]
+    RET[Memory Retriever]
+    SESS[(SQLite - histórico completo)]
+    PROFILE[Perfil e memórias curadas]
+    GRAPH[(Neo4j - relações)]
+    VAULT[Obsidian - documentos]
+    CTX[Context Builder: apenas trechos relevantes]
+    SOURCES[Referências à origem e data]
+    ASK --> RET
+    SESS --> RET
+    PROFILE --> RET
+    GRAPH --> RET
+    VAULT --> RET
+    RET --> SOURCES
+    SOURCES --> CTX

@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant A as NeoSon Core
+    participant D as SQLite
+    participant W as Worker
+    participant M as Memory Service
+    A->>D: BEGIN TRANSACTION
+    A->>D: Salvar run e resposta
+    A->>D: Inserir outbox_event
+    A->>D: COMMIT
+    A-->>A: Finalizar resposta ao usuário
+    W->>D: Reservar evento pendente (lease)
+    D-->>W: Evento e event_id
+    W->>M: Processar com idempotency_key
+    M-->>W: Resultado ou erro
+    W->>D: Marcar completed / retry_at

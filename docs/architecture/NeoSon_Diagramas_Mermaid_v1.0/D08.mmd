@@ -1,0 +1,20 @@
+flowchart TD
+    OBS[Execuções e feedback]
+    CUR[Skill Curator]
+    PROP[Candidate: nova skill ou alteração]
+    CHECK[Lint, testes, permissões e sandbox]
+    EVAL[Avaliações com casos de referência]
+    GATE{Aprovada conforme risco?}
+    STAGE[Staging e versionamento Git]
+    PROD[Registro de skills aprovadas]
+    ROLLBACK[Rollback para versão anterior]
+    OBS --> CUR
+    CUR --> PROP
+    PROP --> CHECK
+    CHECK -->|Passou| EVAL
+    CHECK -->|Falhou| PROP
+    EVAL --> GATE
+    GATE -->|Sim| STAGE
+    GATE -->|Não| PROP
+    STAGE --> PROD
+    PROD -->|Regressão| ROLLBACK

@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant U as Usuário
+    participant G as Gateway
+    participant R as Router
+    participant C as Context Builder
+    participant A as NeoSon Core
+    participant L as LLM Adapter
+    participant P as Policy Engine
+    participant T as Tool Registry
+    participant D as SQLite
+    U->>G: Mensagem
+    G->>D: Identificar e registrar sessão
+    G->>R: Solicitação normalizada
+    R-->>C: Perfil de execução sugerido
+    C->>D: Histórico e memória relevante
+    C-->>A: Contexto e skills candidatas
+    A->>L: Mensagens + schemas das tools
+    L-->>A: Solicitação de tool
+    A->>P: Autorizar ação e argumentos
+    P-->>A: Permitir ou solicitar confirmação
+    A->>T: Executar ferramenta autorizada
+    T-->>A: Resultado estruturado
+    A->>L: Resultado + contexto atualizado
+    L-->>A: Resposta final
+    A->>D: Salvar resposta + evento na transação
+    A-->>G: Resposta
+    G-->>U: Mensagem final

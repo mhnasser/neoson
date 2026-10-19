@@ -1,0 +1,30 @@
+flowchart TB
+    subgraph PI[Raspberry Pi 5 - 8 GB]
+      MIC[Microfone e botões]
+      SCREEN[Display touch e alto-falante]
+      CLIENT[Robot Client e estados de interação]
+      MIC --> CLIENT
+      CLIENT --> SCREEN
+    end
+    subgraph NB[Notebook Lenovo - i7 13a geracao, 16 GB, SSD 512 GB]
+      GATE[Gateway FastAPI]
+      ENGINE[NeoSon Core e Router]
+      STORAGE[(SQLite e arquivos)]
+      WORKER[Workers e Scheduler]
+      KNOW[Vault e Neo4j opcional]
+      GATE --> ENGINE
+      ENGINE --> STORAGE
+      STORAGE --> WORKER
+      WORKER --> KNOW
+    end
+    subgraph PC[PC pessoal - laboratorio]
+      LAB[Fine-tuning, testes e experimentos]
+    end
+    subgraph INTERNET[Servicos externos]
+      PROVIDERS[APIs LLM, STT e TTS opcionais]
+      SERVICES[Telegram, Outlook, Google e Web]
+    end
+    CLIENT <--> GATE
+    ENGINE <--> PROVIDERS
+    GATE <--> SERVICES
+    LAB -.-> ENGINE

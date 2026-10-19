@@ -1,0 +1,16 @@
+flowchart LR
+    MIC[Microfone na Raspberry]
+    VAD[Detecção de fala e botão]
+    STT[STT no servidor ou API]
+    GATE[Gateway]
+    CORE[NeoSon Core]
+    TTS[TTS no servidor ou API]
+    AUDIO[Alto-falante]
+    DISPLAY[Display: ouvindo, pensando, falando]
+    MIC --> VAD
+    VAD --> STT
+    STT --> GATE
+    GATE --> CORE
+    CORE --> TTS
+    TTS --> AUDIO
+    CORE --> DISPLAY
