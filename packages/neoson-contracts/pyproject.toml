@@ -3,6 +3,7 @@ name = "neoson-contracts"
 version = "0.1.0"
 description = "Schemas de transporte compartilhados entre o gateway e os clientes do NeoSon."
 authors = [{ name = "Mohamad Nasser" }]
+license = "MIT"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "pydantic>=2.14.1",

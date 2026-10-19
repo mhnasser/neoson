@@ -69,3 +69,7 @@ docs/                        arquitetura, diagramas, decisões e inventário de 
 O workspace e as regras de dependência entre pacotes estão descritos no
 [ADR-001](docs/decisions/ADR-001-monolito-modular.md) e no
 [ADR-004](docs/decisions/ADR-004-Packaging.md).
+
+## Licença
+
+[MIT](LICENSE).

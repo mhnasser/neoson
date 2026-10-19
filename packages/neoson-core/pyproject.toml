@@ -3,6 +3,7 @@ name = "neoson-core"
 version = "0.1.0"
 description = "Motor do NeoSon: Agent Loop, roteamento, ferramentas, skills, memória e adaptadores."
 authors = [{ name = "Mohamad Nasser" }]
+license = "MIT"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "neoson-contracts",
