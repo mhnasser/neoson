@@ -1,0 +1,83 @@
+"""Configuração do servidor NeoSon.
+
+Precedência: variáveis do processo > arquivo `neoson.env` > valores padrão. Só os
+apps do servidor chamam `load_settings()`; os módulos recebem os valores prontos.
+"""
+
+from pathlib import Path
+from typing import Literal
+
+from pydantic import (
+    Field,
+    NonNegativeInt,
+    PositiveInt,
+    SecretStr,
+    ValidationError,
+    field_validator,
+)
+from pydantic_core import ErrorDetails
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_ENV_FILE = Path("neoson.env")
+
+
+class ConfigError(Exception):
+    """Configuração inválida. A mensagem cita as variáveis, nunca os valores."""
+
+
+class ServerSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="NEOSON_",
+        env_file_encoding="utf-8",
+        env_ignore_empty=True,
+        extra="ignore",
+        frozen=True,
+    )
+
+    env: Literal["development", "test", "production"] = "development"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    llm_provider: str = "openai"
+    llm_model: str | None = None
+    openai_api_key: SecretStr | None = Field(
+        default=None, validation_alias="OPENAI_API_KEY"
+    )
+
+    db_path: Path = Path("data/neoson.db")
+    vault_path: Path = Path("data/NeoSon-Vault")
+
+    primary_model_profile: str = "balanced"
+    router_policy: str = "rules-v1"
+    max_agent_steps: PositiveInt = 12
+    max_subagents: NonNegativeInt = 2
+    approval_mode: str = "required_for_sensitive"
+
+    memory_graph_enabled: bool = False
+    metrics_export_enabled: bool = True
+
+    gateway_host: str = "127.0.0.1"
+    gateway_port: int = Field(default=8000, ge=1, le=65535)
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _log_level_upper(cls, value: object) -> object:
+        return value.upper() if isinstance(value, str) else value
+
+
+def load_settings(env_file: Path | None = DEFAULT_ENV_FILE) -> ServerSettings:
+    """Carrega a configuração; `env_file=None` ignora o arquivo."""
+    try:
+        return ServerSettings(_env_file=env_file)
+    except ValidationError as error:
+        problems = "; ".join(
+            _describe(detail)
+            for detail in error.errors(include_input=False, include_url=False)
+        )
+        # `from None`: o ValidationError original traz os valores recebidos.
+        raise ConfigError(f"Configuração inválida: {problems}") from None
+
+
+def _describe(detail: ErrorDetails) -> str:
+    name = str(detail["loc"][0]) if detail["loc"] else "?"
+    variable = f"NEOSON_{name.upper()}" if name in ServerSettings.model_fields else name
+    return f"{variable}: {detail['msg']}"

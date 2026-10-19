@@ -25,6 +25,7 @@ known-first-party = ["neoson_contracts", "neoson_core", "neoson_gateway"]
 python_version = "3.13"
 strict = true
 files = ["packages", "apps", "tests"]
+plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

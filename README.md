@@ -29,7 +29,7 @@ hardlinks nelas.
 ## Executar
 
 ```bash
-uv run --package neoson-gateway neoson-gateway   # gateway em http://127.0.0.1:8000
+uv run --package neoson-gateway neoson-gateway   # padrão: http://127.0.0.1:8000 (NEOSON_GATEWAY_*)
 ```
 
 Health check: `GET /api/v1/health/live`. Documentação OpenAPI em `/docs`.
@@ -40,8 +40,17 @@ Health check: `GET /api/v1/health/live`. Documentação OpenAPI em `/docs`.
 cp .env.example neoson.env
 ```
 
-Preencha os valores em `neoson.env`. O arquivo está no `.gitignore` e não deve ir para o Git. Por
-enquanto nenhum código lê essas variáveis; elas documentam a configuração prevista.
+Preencha os valores em `neoson.env`. O arquivo está no `.gitignore` e não deve ir para o Git.
+
+O servidor lê a configuração com `neoson_core.infrastructure.config.load_settings()`:
+
+- **Precedência:** variáveis do processo > `neoson.env` no diretório atual > valores padrão.
+- **Validação:** tipos e limites são conferidos na inicialização. Um valor inválido encerra o
+  gateway com uma mensagem que cita a variável, sem mostrar o valor recebido.
+- **Segredos:** `OPENAI_API_KEY` fica oculta em `repr`, logs e mensagens de erro.
+- Variáveis desconhecidas e valores em branco são ignorados (valem os padrões).
+
+O [`.env.example`](.env.example) lista todas as variáveis, com os padrões e os valores aceitos.
 
 ## Testes e qualidade
 

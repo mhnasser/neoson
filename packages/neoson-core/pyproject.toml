@@ -7,6 +7,7 @@ license = "MIT"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "neoson-contracts",
+    "pydantic-settings>=2.16.0",
 ]
 
 [build-system]
