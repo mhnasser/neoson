@@ -4,9 +4,9 @@ Assistente pessoal de IA com interface física, motor Python próprio, memória,
 contínua. A especificação técnica e os diagramas estão em [`docs/architecture/`](docs/architecture/);
 as decisões de arquitetura, em [`docs/decisions/`](docs/decisions/).
 
-> **Estado:** fundação do repositório (workspace, pacotes, testes e ferramentas de qualidade). O
-> gateway só responde ao health check; as funcionalidades do assistente ainda não foram
-> implementadas.
+> **Estado:** fundação pronta (workspace, configuração, CI) e primeiro contrato da API. O gateway
+> recebe mensagens em `POST /api/v1/messages`, mas o motor ainda é provisório (devolve o texto
+> recebido); o Agent Loop e as demais funcionalidades do assistente ainda não foram implementados.
 
 ## Requisitos
 
@@ -32,7 +32,23 @@ hardlinks nelas.
 uv run --package neoson-gateway neoson-gateway   # padrão: http://127.0.0.1:8000 (NEOSON_GATEWAY_*)
 ```
 
-Health check: `GET /api/v1/health/live`. Documentação OpenAPI em `/docs`.
+## API
+
+| Método e rota | Uso |
+|---|---|
+| `GET /api/v1/health/live` | Indica que o processo está ativo |
+| `POST /api/v1/messages` | Recebe `{"text": "..."}` (e `session_id` opcional) e devolve a resposta do NeoSon |
+
+Por enquanto o motor é provisório e devolve o próprio texto recebido. Os schemas ficam em
+`neoson-contracts` ([ADR-005](docs/decisions/ADR-005-API-Contracts.md)). Toda resposta fora de 2xx
+segue o formato `ErrorResponse`:
+
+```json
+{"protocol_version": 1, "code": "invalid_request", "message": "Requisição inválida.",
+ "details": [{"location": "body.text", "message": "String should have at least 1 character"}]}
+```
+
+Documentação interativa (OpenAPI) em `/docs`.
 
 ## Configuração
 

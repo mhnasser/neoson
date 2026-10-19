@@ -40,9 +40,8 @@ packages/neoson-contracts/
 └── src/neoson_contracts/
     ├── __init__.py
     ├── api/v1/
-    │   ├── messages.py
-    │   ├── responses.py
-    │   └── errors.py
+    │   ├── messages.py      # MessageRequest e MessageResponse
+    │   └── errors.py        # ErrorResponse
     └── events/v1/
         ├── robot.py
         └── states.py
@@ -55,6 +54,11 @@ packages/neoson-contracts/
   novo endpoint, mantendo o `v1` enquanto houver cliente usando.
 - Testes verificam que um cliente da versão anterior continua funcionando depois de uma mudança
   compatível do gateway.
+- Os modelos ignoram campos desconhecidos (padrão do Pydantic). É isso que torna compatível
+  acrescentar um campo opcional: o lado que ainda não o conhece simplesmente o descarta.
+- Toda resposta fora de 2xx usa `ErrorResponse` (`code`, `message`, `details`), inclusive erros
+  de validação (422), de rota (404, 405) e internos (500). Os erros nunca devolvem o conteúdo
+  recebido.
 
 ### Transporte separado do domínio
 

@@ -45,6 +45,12 @@ type = "forbidden"
 source_modules = ["neoson_contracts"]
 forbidden_modules = ["neoson_core", "neoson_gateway"]
 
+[[tool.importlinter.contracts]]
+name = "Motor independente de transporte e infraestrutura"
+type = "forbidden"
+source_modules = ["neoson_core.engine"]
+forbidden_modules = ["neoson_contracts", "neoson_core.infrastructure"]
+
 [dependency-groups]
 dev = [
     "httpx2>=2.14.0",
