@@ -1,15 +1,16 @@
 [project]
-name = "neoson"
+name = "neoson-workspace"
 version = "0.1.0"
-description = "Assistente pessoal de IA com motor Python próprio, memória, skills e melhoria contínua."
+description = "Workspace do NeoSon: bibliotecas em packages/ e executáveis em apps/."
 readme = "README.md"
-authors = [{ name = "Mohamad Nasser" }]
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = []
 
-[build-system]
-requires = ["uv_build>=0.12.21,<0.13.0"]
-build-backend = "uv_build"
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*", "apps/*"]
 
 [tool.ruff]
 extend-exclude = ["docs"]
@@ -17,16 +18,36 @@ extend-exclude = ["docs"]
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["neoson_contracts", "neoson_core", "neoson_gateway"]
+
 [tool.mypy]
 python_version = "3.13"
 strict = true
+files = ["packages", "apps", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 
+[tool.importlinter]
+root_packages = ["neoson_contracts", "neoson_core", "neoson_gateway"]
+
+[[tool.importlinter.contracts]]
+name = "Arquitetura em camadas"
+type = "layers"
+layers = ["neoson_gateway", "neoson_core", "neoson_contracts"]
+
+[[tool.importlinter.contracts]]
+name = "Contratos independentes"
+type = "forbidden"
+source_modules = ["neoson_contracts"]
+forbidden_modules = ["neoson_core", "neoson_gateway"]
+
 [dependency-groups]
 dev = [
+    "httpx2>=2.14.0",
+    "import-linter>=2.15",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "ruff>=0.17.1",
