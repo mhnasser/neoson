@@ -1,0 +1,13 @@
+id: planejar_dia
+version: 1.0.0
+description: Monta o plano de um dia a partir da agenda do usuário e das preferências guardadas na memória.
+triggers:
+  - planejar o dia
+  - organizar meu dia
+  - agenda de hoje
+  - plano para amanhã
+  - como está meu dia
+allowed_tools: [calendar_list]
+requires_approval: false
+risk_level: low
+owner: neoson

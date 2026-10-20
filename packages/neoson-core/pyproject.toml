@@ -9,6 +9,7 @@ dependencies = [
     "neoson-contracts",
     "openai>=3.35.1",
     "pydantic-settings>=2.16.0",
+    "pyyaml>=6.0.3",
     "tzdata>=2026.5",
 ]
 

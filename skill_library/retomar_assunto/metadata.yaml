@@ -1,0 +1,13 @@
+id: retomar_assunto
+version: 1.0.0
+description: Recupera o que já foi conversado ou decidido sobre um assunto, citando a data de cada fonte.
+triggers:
+  - o que decidimos
+  - o que falamos sobre
+  - retomar assunto
+  - lembra quando
+  - da última vez
+allowed_tools: [memory_search]
+requires_approval: false
+risk_level: low
+owner: neoson

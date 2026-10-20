@@ -41,6 +41,13 @@ from neoson_core.engine.run import (
     allowed_transitions,
     transition,
 )
+from neoson_core.engine.skills import (
+    Skill,
+    SkillNotFound,
+    SkillRef,
+    SkillRegistry,
+    SkillRisk,
+)
 from neoson_core.engine.tools import (
     PolicyEngine,
     RiskLevel,
@@ -81,6 +88,11 @@ __all__ = [
     "RunState",
     "RunStatus",
     "SessionNotFound",
+    "Skill",
+    "SkillNotFound",
+    "SkillRef",
+    "SkillRegistry",
+    "SkillRisk",
     "ToolCall",
     "ToolCatalog",
     "ToolContext",

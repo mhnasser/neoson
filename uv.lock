@@ -342,6 +342,7 @@ dependencies = [
     { name = "neoson-contracts" },
     { name = "openai" },
     { name = "pydantic-settings" },
+    { name = "pyyaml" },
     { name = "tzdata" },
 ]
 
@@ -350,6 +351,7 @@ requires-dist = [
     { name = "neoson-contracts", editable = "packages/neoson-contracts" },
     { name = "openai", specifier = ">=3.35.1" },
     { name = "pydantic-settings", specifier = ">=2.16.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "tzdata", specifier = ">=2026.5" },
 ]
 
@@ -413,7 +415,6 @@ dev = [
     { name = "import-linter" },
     { name = "mypy" },
     { name = "pytest" },
-    { name = "pyyaml" },
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
@@ -426,7 +427,6 @@ dev = [
     { name = "import-linter", specifier = ">=2.15" },
     { name = "mypy", specifier = ">=2.4.0" },
     { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.17.1" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260906" },
 ]

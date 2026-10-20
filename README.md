@@ -122,6 +122,19 @@ verifica o backup antes e, com `--force`, guarda os dados atuais de lado em vez 
 O `neoson.env` não entra no backup. Passo a passo em
 [`docs/runbooks/backup-restauracao.md`](docs/runbooks/backup-restauracao.md).
 
+### Skills
+
+Procedimentos versionados em [`skill_library/`](skill_library/), um por pasta: `SKILL.md`
+(quando usar, passos, restrições e saída) e `metadata.yaml` (versão, gatilhos, ferramentas
+permitidas e risco). Só arquivos de texto; scripts de skill ainda não são aceitos.
+
+```bash
+uv run --package neoson-gateway neoson-skills validate            # toda a biblioteca
+uv run --package neoson-gateway neoson-skills validate <pasta>    # uma skill
+```
+
+O formato e a governança estão no [ADR-007](docs/decisions/ADR-007-Skills.md).
+
 ## Configuração
 
 ```bash
@@ -172,6 +185,7 @@ packages/neoson-core/        motor do NeoSon
 apps/gateway/                gateway HTTP (FastAPI)
 apps/robot/                  cliente da Raspberry Pi (só contratos e HTTP)
 apps/worker/                 worker da outbox
+skill_library/               skills versionadas (SKILL.md + metadata.yaml)
 tests/                       testes automatizados
 docs/                        arquitetura, diagramas, decisões e inventário de hardware
 ```

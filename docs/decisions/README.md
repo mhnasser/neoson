@@ -14,3 +14,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-004](ADR-004-Packaging.md) | Empacotamento: uv workspace e `[project.scripts]` | accepted |
 | [ADR-005](ADR-005-API-Contracts.md) | Contratos da API em `neoson-contracts` | accepted |
 | [ADR-006](ADR-006-Import-Boundaries.md) | Limites de importação com Import Linter | accepted |
+| [ADR-007](ADR-007-Skills.md) | Skills: formato, aprovação e execução | accepted |

@@ -79,6 +79,7 @@ forbidden_modules = [
     "neoson_core.memory",
     "neoson_core.providers",
     "neoson_core.routing",
+    "neoson_core.skills",
     "neoson_core.tools",
 ]
 
@@ -93,6 +94,7 @@ source_modules = [
     "neoson_core.engine",
     "neoson_core.infrastructure",
     "neoson_core.routing",
+    "neoson_core.skills",
     "neoson_core.telemetry",
 ]
 forbidden_modules = ["openai"]
@@ -105,6 +107,7 @@ modules = [
     "neoson_core.providers",
     "neoson_core.routing",
     "neoson_core.memory",
+    "neoson_core.skills",
     "neoson_core.tools",
 ]
 
@@ -116,6 +119,7 @@ forbidden_modules = [
     "neoson_core.memory",
     "neoson_core.providers",
     "neoson_core.routing",
+    "neoson_core.skills",
     "neoson_core.tools",
 ]
 
@@ -128,6 +132,7 @@ forbidden_modules = [
     "neoson_core.memory",
     "neoson_core.providers",
     "neoson_core.routing",
+    "neoson_core.skills",
     "neoson_core.tools",
 ]
 
@@ -137,7 +142,6 @@ dev = [
     "import-linter>=2.15",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
-    "pyyaml>=6.0.3",
     "ruff>=0.17.1",
     "types-pyyaml>=6.0.12.20260906",
 ]
