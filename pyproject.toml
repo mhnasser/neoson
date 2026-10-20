@@ -19,7 +19,13 @@ extend-exclude = ["docs"]
 select = ["E", "W", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["neoson_contracts", "neoson_core", "neoson_gateway", "neoson_robot"]
+known-first-party = [
+    "neoson_contracts",
+    "neoson_core",
+    "neoson_gateway",
+    "neoson_robot",
+    "neoson_worker",
+]
 
 [tool.mypy]
 python_version = "3.13"
@@ -33,25 +39,35 @@ addopts = ["-ra", "--strict-markers", "--strict-config"]
 markers = ["live: chama APIs reais; roda só com NEOSON_LIVE_TESTS=1"]
 
 [tool.importlinter]
-root_packages = ["neoson_contracts", "neoson_core", "neoson_gateway", "neoson_robot"]
+root_packages = [
+    "neoson_contracts",
+    "neoson_core",
+    "neoson_gateway",
+    "neoson_robot",
+    "neoson_worker",
+]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Arquitetura em camadas"
 type = "layers"
-layers = ["neoson_gateway | neoson_robot", "neoson_core", "neoson_contracts"]
+layers = [
+    "neoson_gateway | neoson_robot | neoson_worker",
+    "neoson_core",
+    "neoson_contracts",
+]
 
 [[tool.importlinter.contracts]]
 name = "Contratos independentes"
 type = "forbidden"
 source_modules = ["neoson_contracts"]
-forbidden_modules = ["neoson_core", "neoson_gateway", "neoson_robot"]
+forbidden_modules = ["neoson_core", "neoson_gateway", "neoson_robot", "neoson_worker"]
 
 [[tool.importlinter.contracts]]
 name = "Raspberry isolada do servidor"
 type = "forbidden"
 source_modules = ["neoson_robot"]
-forbidden_modules = ["neoson_core", "neoson_gateway"]
+forbidden_modules = ["neoson_core", "neoson_gateway", "neoson_worker"]
 
 [[tool.importlinter.contracts]]
 name = "Motor independente de transporte e infraestrutura"
@@ -73,9 +89,11 @@ source_modules = [
     "neoson_contracts",
     "neoson_gateway",
     "neoson_robot",
+    "neoson_worker",
     "neoson_core.engine",
     "neoson_core.infrastructure",
     "neoson_core.routing",
+    "neoson_core.telemetry",
 ]
 forbidden_modules = ["openai"]
 allow_indirect_imports = true
@@ -95,6 +113,18 @@ name = "Infraestrutura não depende de adaptadores"
 type = "forbidden"
 source_modules = ["neoson_core.infrastructure"]
 forbidden_modules = [
+    "neoson_core.memory",
+    "neoson_core.providers",
+    "neoson_core.routing",
+    "neoson_core.tools",
+]
+
+[[tool.importlinter.contracts]]
+name = "Telemetria só depende do motor"
+type = "forbidden"
+source_modules = ["neoson_core.telemetry"]
+forbidden_modules = [
+    "neoson_core.infrastructure",
     "neoson_core.memory",
     "neoson_core.providers",
     "neoson_core.routing",

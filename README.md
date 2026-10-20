@@ -8,8 +8,9 @@ as decisões de arquitetura, em [`docs/decisions/`](docs/decisions/).
 > `neoson-robot` envia mensagens ao gateway em `POST /api/v1/messages`, e o Agent Loop responde
 > pelo modelo configurado (OpenAI), com roteador por regras, limites de passos, tempo e tokens, e
 > ferramentas autorizadas por uma Policy Engine (por enquanto, uma agenda de demonstração). A API
-> exige token, e a conversa fica gravada em SQLite (sobrevive a reinícios). O worker que consome
-> os eventos ainda está em construção.
+> exige token, a conversa fica gravada em SQLite (sobrevive a reinícios) e o worker consome os
+> eventos da outbox com lease, retry e idempotência. Memória, Obsidian e skills vêm nas próximas
+> fases.
 
 ## Requisitos
 
@@ -33,8 +34,15 @@ hardlinks nelas.
 
 ```bash
 uv run --package neoson-gateway neoson-gateway   # padrão: http://127.0.0.1:8000 (NEOSON_GATEWAY_*)
+uv run --package neoson-worker neoson-worker    # consome a outbox (--once: processa e sai)
 uv run --package neoson-robot neoson-robot "Olá, NeoSon"   # envia uma mensagem e mostra a resposta
 ```
+
+O worker processa os eventos que o gateway grava junto com cada resposta (transactional outbox,
+[ADR-002](docs/decisions/ADR-002-Persistencia.md)). A entrega é pelo menos uma vez: se o worker
+cair, outro assume o evento quando o lease vence, e `worker_effects` garante que o efeito não se
+repete. Falhas são refeitas com backoff exponencial e, esgotadas as tentativas, vão para
+`dead_letter`. Hoje o único efeito é registrar o uso de tokens de cada execução em `usage_records`.
 
 O `neoson-robot` é o cliente da Raspberry Pi. Ele depende só de `neoson-contracts` e de um
 cliente HTTP, sem nada do servidor; para instalar apenas ele:
@@ -122,6 +130,7 @@ packages/neoson-contracts/   schemas de transporte compartilhados (ADR-005)
 packages/neoson-core/        motor do NeoSon
 apps/gateway/                gateway HTTP (FastAPI)
 apps/robot/                  cliente da Raspberry Pi (só contratos e HTTP)
+apps/worker/                 worker da outbox
 tests/                       testes automatizados
 docs/                        arquitetura, diagramas, decisões e inventário de hardware
 ```

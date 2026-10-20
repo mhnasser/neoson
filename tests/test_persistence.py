@@ -95,9 +95,10 @@ def test_migrations_are_sequential_and_applied_once(db_path: Path) -> None:
     finally:
         connection.close()
 
-    assert first == [m.version for m in migrations()] == [1]
+    versions = [m.version for m in migrations()]
+    assert first == versions == list(range(1, len(versions) + 1))
     assert second == []
-    assert version == 1
+    assert version == versions[-1]
     assert (journal, foreign_keys) == ("wal", 1)
     assert {
         "sessions",

@@ -64,6 +64,11 @@ class ServerSettings(BaseSettings):
     metrics_export_enabled: bool = True
 
     api_token: SecretStr | None = None
+
+    worker_poll_seconds: PositiveFloat = 1.0
+    worker_lease_seconds: PositiveFloat = 60.0
+    worker_max_attempts: PositiveInt = 5
+
     gateway_host: str = "127.0.0.1"
     gateway_port: int = Field(default=8000, ge=1, le=65535)
 

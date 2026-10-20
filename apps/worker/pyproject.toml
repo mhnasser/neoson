@@ -1,0 +1,20 @@
+[project]
+name = "neoson-worker"
+version = "0.1.0"
+description = "Worker do NeoSon: consome a outbox com lease, retry e idempotência."
+authors = [{ name = "Mohamad Nasser" }]
+license = "MIT"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "neoson-core",
+]
+
+[project.scripts]
+neoson-worker = "neoson_worker.main:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+neoson-core = { workspace = true }

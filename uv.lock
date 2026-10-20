@@ -8,6 +8,7 @@ members = [
     "neoson-core",
     "neoson-gateway",
     "neoson-robot",
+    "neoson-worker",
     "neoson-workspace",
 ]
 
@@ -387,6 +388,17 @@ requires-dist = [
     { name = "neoson-contracts", editable = "packages/neoson-contracts" },
     { name = "pydantic", specifier = ">=2.14.1" },
 ]
+
+[[package]]
+name = "neoson-worker"
+version = "0.1.0"
+source = { editable = "apps/worker" }
+dependencies = [
+    { name = "neoson-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "neoson-core", editable = "packages/neoson-core" }]
 
 [[package]]
 name = "neoson-workspace"
