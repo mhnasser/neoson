@@ -91,6 +91,14 @@ uv run mypy                    # tipagem (modo estrito, todos os membros e teste
 uv run lint-imports            # limites de importação entre pacotes (ADR-006)
 ```
 
+Os testes marcados como `live` chamam a API real da OpenAI (custo de centavos) e ficam
+desligados por padrão; o CI não os executa. Para rodá-los, com `OPENAI_API_KEY` e
+`NEOSON_LLM_MODEL` no `neoson.env`:
+
+```bash
+NEOSON_LIVE_TESTS=1 uv run pytest -m live
+```
+
 O GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda as mesmas verificações
 a cada pull request e a cada push na `main`, com Python 3.13 e as versões do `uv.lock`.
 

@@ -2,6 +2,14 @@
 
 from neoson_core.engine.conversation import Engine, RunResult, RunStatus, UserMessage
 from neoson_core.engine.echo import EchoEngine
+from neoson_core.engine.llm import (
+    LLMError,
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    ToolSpec,
+    Usage,
+)
 from neoson_core.engine.messages import (
     Message,
     Role,
@@ -26,6 +34,10 @@ __all__ = [
     "Engine",
     "ExecutionMode",
     "InvalidTransition",
+    "LLMError",
+    "LLMProvider",
+    "LLMRequest",
+    "LLMResponse",
     "Message",
     "Role",
     "RouteDecision",
@@ -36,6 +48,8 @@ __all__ = [
     "ToolCall",
     "ToolResult",
     "ToolResultStatus",
+    "ToolSpec",
+    "Usage",
     "UserMessage",
     "allowed_transitions",
     "transition",

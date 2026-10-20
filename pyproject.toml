@@ -30,6 +30,7 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = ["live: chama APIs reais; roda só com NEOSON_LIVE_TESTS=1"]
 
 [tool.importlinter]
 root_packages = ["neoson_contracts", "neoson_core", "neoson_gateway", "neoson_robot"]
@@ -55,7 +56,11 @@ forbidden_modules = ["neoson_core", "neoson_gateway"]
 name = "Motor independente de transporte e infraestrutura"
 type = "forbidden"
 source_modules = ["neoson_core.engine"]
-forbidden_modules = ["neoson_contracts", "neoson_core.infrastructure"]
+forbidden_modules = [
+    "neoson_contracts",
+    "neoson_core.infrastructure",
+    "neoson_core.providers",
+]
 
 [dependency-groups]
 dev = [
