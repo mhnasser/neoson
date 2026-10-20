@@ -58,6 +58,7 @@ class ServerSettings(BaseSettings):
 
     db_path: Path = Path("data/neoson.db")
     vault_path: Path = Path("data/NeoSon-Vault")
+    backup_path: Path = Path("data/backups")
 
     primary_model_profile: str = "balanced"
     router_policy: str = "rules-v1"

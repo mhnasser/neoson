@@ -109,6 +109,19 @@ segue o formato `ErrorResponse`:
 
 Documentação interativa (OpenAPI) em `/docs`.
 
+### Backup e restauração
+
+```bash
+uv run --package neoson-worker neoson-backup create          # banco + vault + manifest.json
+uv run --package neoson-worker neoson-backup verify <pasta>  # integridade e hashes
+uv run --package neoson-worker neoson-backup restore <pasta> # pare gateway e worker antes
+```
+
+O banco é copiado pela API de backup do SQLite (consistente mesmo em uso). A restauração
+verifica o backup antes e, com `--force`, guarda os dados atuais de lado em vez de apagá-los.
+O `neoson.env` não entra no backup. Passo a passo em
+[`docs/runbooks/backup-restauracao.md`](docs/runbooks/backup-restauracao.md).
+
 ## Configuração
 
 ```bash
