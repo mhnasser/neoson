@@ -1,7 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
+
+from neoson_core.engine.llm import Usage
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +23,8 @@ class RunResult:
     run_id: UUID
     text: str
     status: RunStatus
+    usage: Usage = field(default_factory=Usage)
+    model: str | None = None
 
 
 class Engine(Protocol):

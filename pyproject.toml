@@ -34,6 +34,7 @@ markers = ["live: chama APIs reais; roda só com NEOSON_LIVE_TESTS=1"]
 
 [tool.importlinter]
 root_packages = ["neoson_contracts", "neoson_core", "neoson_gateway", "neoson_robot"]
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Arquitetura em camadas"
@@ -61,6 +62,20 @@ forbidden_modules = [
     "neoson_core.infrastructure",
     "neoson_core.providers",
 ]
+
+[[tool.importlinter.contracts]]
+name = "SDK de fornecedor de LLM só em providers"
+type = "forbidden"
+source_modules = [
+    "neoson_contracts",
+    "neoson_gateway",
+    "neoson_robot",
+    "neoson_core.engine",
+    "neoson_core.infrastructure",
+    "neoson_core.routing",
+]
+forbidden_modules = ["openai"]
+allow_indirect_imports = true
 
 [dependency-groups]
 dev = [

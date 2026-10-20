@@ -10,6 +10,7 @@ from neoson_core.engine.llm import (
     ToolSpec,
     Usage,
 )
+from neoson_core.engine.loop import AgentLoop
 from neoson_core.engine.messages import (
     Message,
     Role,
@@ -17,7 +18,13 @@ from neoson_core.engine.messages import (
     ToolResult,
     ToolResultStatus,
 )
-from neoson_core.engine.route import Complexity, ExecutionMode, RouteDecision
+from neoson_core.engine.route import (
+    Complexity,
+    ExecutionMode,
+    RouteDecision,
+    Router,
+    RouteRequest,
+)
 from neoson_core.engine.run import (
     Budget,
     InvalidTransition,
@@ -28,6 +35,7 @@ from neoson_core.engine.run import (
 )
 
 __all__ = [
+    "AgentLoop",
     "Budget",
     "Complexity",
     "EchoEngine",
@@ -41,6 +49,8 @@ __all__ = [
     "Message",
     "Role",
     "RouteDecision",
+    "RouteRequest",
+    "Router",
     "RunContext",
     "RunResult",
     "RunState",

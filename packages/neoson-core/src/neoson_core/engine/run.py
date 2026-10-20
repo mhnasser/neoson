@@ -76,8 +76,8 @@ class InvalidTransition(ValueError):
 _TERMINAL = frozenset({RunState.COMPLETED, RunState.FAILED, RunState.CANCELLED})
 
 # Caminho normal do D05. Além dele, qualquer estado não final pode ir para
-# `failed` (erro) ou `cancelled` (cancelamento, prazo ou aprovação negada): o
-# diagrama é simplificado e só mostra essas saídas a partir de `running`.
+# `failed` (erro ou limite de passos, tokens ou prazo) ou `cancelled` (cancelamento
+# ou aprovação negada): o diagrama só mostra essas saídas a partir de `running`.
 _NEXT: Mapping[RunState, frozenset[RunState]] = {
     RunState.RECEIVED: frozenset({RunState.ROUTING}),
     RunState.ROUTING: frozenset({RunState.CONTEXT_READY}),

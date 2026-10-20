@@ -41,6 +41,18 @@ class OpenAIProvider:
         self._models = dict(models)
         self._reasoning_effort = reasoning_effort
 
+    @classmethod
+    def from_api_key(
+        cls,
+        api_key: str,
+        models: Mapping[str, str],
+        timeout_seconds: float,
+        reasoning_effort: str | None = None,
+    ) -> "OpenAIProvider":
+        """Cria o cliente do SDK aqui, para que só `providers` conheça o fornecedor."""
+        client = AsyncOpenAI(api_key=api_key, timeout=timeout_seconds)
+        return cls(client, models, reasoning_effort)
+
     async def complete(self, request: LLMRequest) -> LLMResponse:
         model = self._models.get(request.model_profile)
         if model is None:

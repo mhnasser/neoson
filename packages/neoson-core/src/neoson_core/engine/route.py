@@ -2,7 +2,8 @@
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import Literal, get_args
+from typing import Literal, Protocol, get_args
+from uuid import UUID
 
 from neoson_core.engine._validation import require_text
 
@@ -36,3 +37,13 @@ class RouteDecision:
             )
         if not (isfinite(self.confidence) and 0.0 <= self.confidence <= 1.0):
             raise ValueError("RouteDecision.confidence deve estar entre 0 e 1.")
+
+
+@dataclass(frozen=True, slots=True)
+class RouteRequest:
+    text: str
+    session_id: UUID | None = None
+
+
+class Router(Protocol):
+    async def decide(self, request: RouteRequest) -> RouteDecision: ...

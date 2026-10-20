@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import (
     Field,
     NonNegativeInt,
+    PositiveFloat,
     PositiveInt,
     SecretStr,
     ValidationError,
@@ -37,8 +38,9 @@ class ServerSettings(BaseSettings):
     env: Literal["development", "test", "production"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    llm_provider: str = "openai"
+    llm_provider: Literal["openai", "echo"] = "openai"
     llm_model: str | None = None
+    llm_reasoning_effort: str | None = None
     openai_api_key: SecretStr | None = Field(
         default=None, validation_alias="OPENAI_API_KEY"
     )
@@ -49,6 +51,7 @@ class ServerSettings(BaseSettings):
     primary_model_profile: str = "balanced"
     router_policy: str = "rules-v1"
     max_agent_steps: PositiveInt = 12
+    run_timeout_seconds: PositiveFloat = 120.0
     max_subagents: NonNegativeInt = 2
     approval_mode: str = "required_for_sensitive"
 

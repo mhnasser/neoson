@@ -6,9 +6,19 @@ import os
 import pytest
 from openai import AsyncOpenAI
 
-from neoson_core.engine import LLMRequest, Message, Role, ToolSpec
+from neoson_core.engine import (
+    AgentLoop,
+    Budget,
+    LLMRequest,
+    Message,
+    Role,
+    RunStatus,
+    ToolSpec,
+    UserMessage,
+)
 from neoson_core.infrastructure.config import load_settings
 from neoson_core.providers.openai_provider import OpenAIProvider
+from neoson_core.routing.rules import RulesRouter
 
 pytestmark = [
     pytest.mark.live,
@@ -76,3 +86,17 @@ def test_live_tool_call() -> None:
     (call,) = response.message.tool_calls
     assert call.name == "calendar_list"
     assert call.arguments["day"] == "2026-10-21"
+
+
+def test_live_agent_loop_answers_through_the_model() -> None:
+    agent = AgentLoop(
+        provider=live_provider(),
+        router=RulesRouter("balanced"),
+        budget=Budget(max_steps=3, timeout_seconds=60),
+    )
+
+    result = asyncio.run(agent.run(UserMessage(text="Quanto é 2 + 3? Só o número.")))
+
+    assert result.status is RunStatus.COMPLETED
+    assert "5" in result.text
+    assert result.usage.input_tokens > 0

@@ -21,6 +21,7 @@ def test_main_starts_uvicorn_with_configured_host_port_and_log_level(
 ) -> None:
     calls: list[dict[str, Any]] = []
     monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append(kwargs))
+    monkeypatch.setenv("NEOSON_LLM_PROVIDER", "echo")
     monkeypatch.setenv("NEOSON_GATEWAY_PORT", "9123")
     monkeypatch.setenv("NEOSON_LOG_LEVEL", "WARNING")
 

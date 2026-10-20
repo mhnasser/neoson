@@ -4,10 +4,10 @@ Assistente pessoal de IA com interface física, motor Python próprio, memória,
 contínua. A especificação técnica e os diagramas estão em [`docs/architecture/`](docs/architecture/);
 as decisões de arquitetura, em [`docs/decisions/`](docs/decisions/).
 
-> **Estado:** fundação pronta (workspace, configuração, CI) e primeiro contrato da API. O cliente
-> `neoson-robot` envia mensagens ao gateway em `POST /api/v1/messages`, mas o motor ainda é
-> provisório (devolve o texto recebido); o Agent Loop e as demais funcionalidades do assistente
-> ainda não foram implementados.
+> **Estado:** fundação pronta (workspace, configuração, CI) e primeira versão do motor. O cliente
+> `neoson-robot` envia mensagens ao gateway em `POST /api/v1/messages`, e o Agent Loop responde
+> pelo modelo configurado (OpenAI), com roteador por regras e limites de passos, tempo e tokens.
+> Ferramentas, persistência da conversa, autenticação e worker ainda estão em construção.
 
 ## Requisitos
 
@@ -52,7 +52,9 @@ responder ou responder fora do contrato; 2 para mensagem, opção ou URL inváli
 | `GET /api/v1/health/live` | Indica que o processo está ativo |
 | `POST /api/v1/messages` | Recebe `{"text": "..."}` (e `session_id` opcional) e devolve a resposta do NeoSon |
 
-Por enquanto o motor é provisório e devolve o próprio texto recebido. Os schemas ficam em
+A resposta vem do Agent Loop, pelo modelo configurado em `NEOSON_LLM_MODEL`. Para desenvolver sem
+chave da OpenAI, use `NEOSON_LLM_PROVIDER=echo`: o motor devolve o próprio texto recebido. Os
+schemas ficam em
 `neoson-contracts` ([ADR-005](docs/decisions/ADR-005-API-Contracts.md)). Toda resposta fora de 2xx
 segue o formato `ErrorResponse`:
 
