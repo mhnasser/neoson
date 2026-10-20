@@ -6,9 +6,10 @@ Escrita atômica (`.tmp` → rename) e idempotente: sem mudança nos dados, nenh
 
 import json
 import os
+import re
 import sqlite3
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime, tzinfo
+from datetime import UTC, date, datetime, tzinfo
 from pathlib import Path
 from uuid import UUID
 
@@ -22,10 +23,12 @@ from neoson_core.telemetry.metrics import (
     recent_days,
     system_metrics,
 )
+from neoson_core.telemetry.skill_metrics import SkillMetrics, skill_metrics
 
 HANDLER_NAME = "telemetry.vault"
 DAILY_DIR = Path("Metricas") / "Diarias"
 DASHBOARD_DIR = Path("Dashboard")
+ACTIVE_SKILLS_DIR = Path("Skills") / "Ativas"
 
 
 def write_atomic(path: Path, text: str) -> bool:
@@ -117,7 +120,8 @@ def render_home(
         f"{rows}\n\n## Avisos\n\n"
         + ("\n".join(warnings) if warnings else "Nenhum aviso.")
         + "\n\nPainéis: [[Dashboard/LLM-Custos|LLM & Custos]] · "
-        "[[Dashboard/NeoSon-System|NeoSon System]]\n"
+        "[[Dashboard/NeoSon-System|NeoSon System]] · "
+        "[[Dashboard/Skills-Learning|Skills & Learning]]\n"
     )
 
 
@@ -158,6 +162,91 @@ def render_system(system: SystemMetrics) -> str:
     )
 
 
+def render_skills(skills: Sequence[SkillMetrics]) -> str:
+    rows = []
+    for skill in skills:
+        name = (
+            f"[[Skills/Ativas/{skill.id}\\|{skill.id}]]"
+            if skill.status == "active"
+            else skill.id
+        )
+        rows.append(
+            f"| {name} | {skill.version} | {skill.status} | {skill.runs} | "
+            f"{_pct(skill.success_pct)} | "
+            f"{skill.input_tokens} / {skill.output_tokens} / {skill.cached_tokens} | "
+            f"{_usd(skill.cost_usd)} | {skill.runs_without_cost} | "
+            f"{_evaluation(skill)} |"
+        )
+    return (
+        frontmatter(
+            {
+                "tipo": "neoson-dashboard",
+                "painel": "Skills & Learning",
+                "skills_ativas": sum(s.status == "active" for s in skills),
+                "versoes_aprovadas": len(skills),
+            }
+        )
+        + "\n# Skills & Learning\n\n"
+        "Histórico integral por versão. Sucesso = concluídas / execuções, "
+        "incluindo falhas e esperas por aprovação no denominador.\n\n"
+        "| Skill | Versão | Estado | Execuções | Sucesso | "
+        "Tokens (entrada / saída / cache) | Custo conhecido | Sem custo | "
+        "Última avaliação (UTC; casos aprovados/total) |\n"
+        "|---|---|---|---|---|---|---|---|---|\n"
+        + ("\n".join(rows) if rows else "Nenhuma skill aprovada.")
+        + "\n\nCusto conhecido pode ser parcial; Sem custo conta execuções sem preço "
+        "ou ainda não processadas pelo worker. — indica dado indisponível. "
+        "Avaliações com fixtures não entram nas execuções nem no custo de uso.\n"
+    )
+
+
+def render_skill(skill: SkillMetrics) -> str:
+    return (
+        frontmatter(
+            {
+                "tipo": "neoson-skill",
+                "skill_id": skill.id,
+                "versao": skill.version,
+                "estado": skill.status,
+                "execucoes_total": skill.runs,
+                "concluidas": skill.completed,
+                "falhas": skill.failed,
+                "aguardando_aprovacao": skill.waiting_approval,
+                "sucesso_pct": skill.success_pct,
+                "tokens_entrada": skill.input_tokens,
+                "tokens_saida": skill.output_tokens,
+                "tokens_cache": skill.cached_tokens,
+                "custo_usd": skill.cost_usd,
+                "execucoes_sem_custo": skill.runs_without_cost,
+                "ultima_avaliacao": skill.evaluated_at,
+                "avaliacao_casos_total": skill.total_cases,
+                "avaliacao_casos_aprovados": skill.passed_cases,
+                "avaliacao_tokens_entrada": skill.evaluation_input_tokens,
+                "avaliacao_tokens_saida": skill.evaluation_output_tokens,
+                "avaliacao_tokens_cache": skill.evaluation_cached_tokens,
+                "avaliacao_custo_usd": skill.evaluation_cost_usd,
+                "avaliacao_duracao_s": skill.evaluation_seconds,
+            }
+        )
+        + f"\n# {skill.id} — {skill.version}\n\n"
+        f"Execuções: {skill.runs}; concluídas: {skill.completed}; "
+        f"falhas: {skill.failed}; aguardando aprovação: {skill.waiting_approval}.\n\n"
+        f"Sucesso: {_pct(skill.success_pct)}. "
+        f"Custo conhecido: {_usd(skill.cost_usd)} "
+        f"({skill.runs_without_cost} execução/execuções sem custo).\n\n"
+        f"Última avaliação: {_evaluation(skill)}. "
+        f"Custo da avaliação: {_usd(skill.evaluation_cost_usd)}.\n\n"
+        "[[Dashboard/Skills-Learning|Skills & Learning]]\n"
+    )
+
+
+def _evaluation(skill: SkillMetrics) -> str:
+    if skill.evaluated_at is None:
+        return "—"
+    when = datetime.fromisoformat(skill.evaluated_at).astimezone(UTC)
+    return f"{when:%Y-%m-%d %H:%M:%S} UTC; {skill.passed_cases}/{skill.total_cases}"
+
+
 class VaultExporter:
     """Handler do worker: atualiza a nota do dia do evento e os dashboards."""
 
@@ -178,6 +267,10 @@ class VaultExporter:
         """Exporta e devolve os arquivos alterados."""
         today = datetime.now(self._zone).date()
         system = system_metrics(connection, completing)
+        skills = skill_metrics(connection)
+        # IDs vêm do registro validado, mas nunca confiar em um caminho vindo do DB.
+        if any(re.fullmatch(r"[a-z][a-z0-9_]{1,63}", s.id) is None for s in skills):
+            raise ValueError("ID de skill inválido para exportação.")
         files = {
             self._vault / DAILY_DIR / f"{day.isoformat()}.md": render_daily(
                 daily_metrics(connection, day, self._zone)
@@ -189,8 +282,24 @@ class VaultExporter:
                 model_usage(connection, today, self._zone)
             ),
             self._vault / DASHBOARD_DIR / "NeoSon-System.md": render_system(system),
+            self._vault / DASHBOARD_DIR / "Skills-Learning.md": render_skills(skills),
         }
-        return [path for path, text in files.items() if write_atomic(path, text)]
+        files.update(
+            {
+                self._vault / ACTIVE_SKILLS_DIR / f"{s.id}.md": render_skill(s)
+                for s in skills
+                if s.status == "active"
+            }
+        )
+        changed = [path for path, text in files.items() if write_atomic(path, text)]
+        active = {s.id for s in skills if s.status == "active"}
+        for skill_id in sorted({s.id for s in skills} - active):
+            path = self._vault / ACTIVE_SKILLS_DIR / f"{skill_id}.md"
+            marker = f'---\ntipo: "neoson-skill"\nskill_id: "{skill_id}"\n'
+            if path.exists() and path.read_text(encoding="utf-8").startswith(marker):
+                path.unlink()
+                changed.append(path)
+        return changed
 
 
 def _daily_link(day: date) -> str:

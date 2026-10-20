@@ -267,6 +267,7 @@ def test_worker_exports_the_vault_without_conversation_content(
         "Dashboard/Home.md",
         "Dashboard/LLM-Custos.md",
         "Dashboard/NeoSon-System.md",
+        "Dashboard/Skills-Learning.md",
         "Metricas/Diarias/2026-10-19.md",
         "Metricas/Diarias/2026-10-20.md",
     ]

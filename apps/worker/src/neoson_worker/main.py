@@ -16,7 +16,7 @@ from neoson_core.infrastructure.config import (
 )
 from neoson_core.infrastructure.db import connect, migrate
 from neoson_core.memory import curated, vault_export
-from neoson_core.telemetry import usage, vault
+from neoson_core.telemetry import skill_metrics, usage, vault
 from neoson_core.telemetry.pricing import Price
 from neoson_worker.worker import Handler, RetryPolicy, Worker
 
@@ -29,14 +29,19 @@ def build_handlers(settings: ServerSettings | None = None) -> dict[str, list[Han
     }
     handlers = [Handler(usage.HANDLER_NAME, usage.UsageRecorder(prices))]
     memory_handlers = []
+    skill_handlers = []
     if settings is not None and settings.metrics_export_enabled:
         zone = ZoneInfo(settings.timezone)
         exporter = vault.VaultExporter(settings.vault_path, zone)
         handlers.append(Handler(vault.HANDLER_NAME, exporter))
+        skill_handlers.append(Handler(vault.HANDLER_NAME, exporter))
         memory_exporter = vault_export.MemoryVaultExporter(settings.vault_path, zone)
         memory_handlers.append(Handler(vault_export.HANDLER_NAME, memory_exporter))
     routes = {event_type: list(handlers) for event_type in usage.EVENT_TYPES}
     routes[curated.EVENT_TYPE] = memory_handlers
+    routes.update(
+        {event_type: list(skill_handlers) for event_type in skill_metrics.EVENT_TYPES}
+    )
     return routes
 
 

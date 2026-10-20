@@ -70,6 +70,15 @@ das ferramentas, com as respostas da fixture. Nenhuma implementação real de fe
 ou conteúdo das respostas. A gravação gera `neoson.skill.evaluated` na mesma transação.
 O custo só é conhecido se houver preço configurado para todos os modelos envolvidos.
 
+**Painéis.** O worker exporta agregados por versão em `Dashboard/Skills-Learning.md` e uma
+nota por skill ativa em `Skills/Ativas/`. As execuções usam os tokens do run e o custo de
+`usage_records`; avaliações ficam separadas e a última é selecionada pela versão e checksum.
+A taxa de sucesso divide execuções concluídas pelo total, incluindo falhas e esperas por
+aprovação. Valores sem preço continuam desconhecidos; somas parciais indicam quantas
+execuções estão sem custo. Rollback atualiza a nota ativa; retirada remove apenas a nota
+gerada, mantendo as métricas históricas no painel. Nenhuma instrução, fixture ou conversa
+é exportada. A escrita é atômica por arquivo e repetições sem mudança não regravam notas.
+
 ## Implicações
 
 - Novo adaptador `neoson_core.skills`, independente dos outros adaptadores (ADR-006). A porta

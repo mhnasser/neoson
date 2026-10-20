@@ -9,8 +9,8 @@ as decisões de arquitetura, em [`docs/decisions/`](docs/decisions/).
 > pelo modelo configurado (OpenAI), com roteador por regras, limites de passos, tempo e tokens, e
 > ferramentas autorizadas por uma Policy Engine (por enquanto, uma agenda de demonstração). A API
 > exige token, a conversa fica gravada em SQLite (sobrevive a reinícios) e o worker consome os
-> eventos da outbox com lease, retry e idempotência. Memória, Obsidian e skills vêm nas próximas
-> fases.
+> eventos da outbox com lease, retry e idempotência. Há busca no histórico, memória curada com
+> fonte, painéis no Obsidian e skills aprovadas com versões e avaliação por fixtures.
 
 ## Requisitos
 
@@ -56,6 +56,15 @@ para o vault. A escrita é atômica, e um arquivo só é regravado quando os dad
 regerar tudo a partir do banco, use `neoson-worker --export-vault`; para desligar a exportação,
 `NEOSON_METRICS_EXPORT_ENABLED=false`. O custo usa os preços de `NEOSON_LLM_PRICES` (USD por
 milhão de tokens, por modelo); sem preço, aparece como —.
+
+`Dashboard/Skills-Learning.md` mostra o histórico por versão das skills: estado, execuções,
+sucesso, tokens, custo conhecido e última avaliação. Cada skill ativa tem uma nota com
+frontmatter em `Skills/Ativas/<id>.md`; rollback atualiza essa nota e retirada remove a nota
+gerada, preservando o histórico no painel. Aprovações, rollback, retirada e avaliações
+atualizam o painel pelo worker, assim como os resultados das execuções. A última avaliação
+corresponde à mesma versão e checksum; seus tokens e custos ficam separados do uso normal.
+O custo conhecido pode ser parcial: o painel também informa quantas execuções não têm custo.
+Sem skills aprovadas, mostra o catálogo vazio. Nenhuma skill é aprovada pela exportação.
 
 O `neoson-robot` é o cliente da Raspberry Pi. Ele depende só de `neoson-contracts` e de um
 cliente HTTP, sem nada do servidor; para instalar apenas ele:
