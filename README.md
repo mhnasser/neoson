@@ -131,7 +131,17 @@ permitidas e risco). Só arquivos de texto; scripts de skill ainda não são ace
 ```bash
 uv run --package neoson-gateway neoson-skills validate            # toda a biblioteca
 uv run --package neoson-gateway neoson-skills validate <pasta>    # uma skill
+uv run --package neoson-gateway neoson-skills approve <pasta>     # aprova e ativa a versão
+uv run --package neoson-gateway neoson-skills list                # versões e estados
+uv run --package neoson-gateway neoson-skills rollback <id>       # aprovação anterior
+uv run --package neoson-gateway neoson-skills retire <id>         # retira a versão ativa
 ```
+
+Validar não aprova. A aprovação explícita guarda no SQLite a cópia integral da skill e seu
+checksum, junto com um evento na outbox. Editar a pasta depois não altera a versão aprovada;
+aprovar conteúdo diferente exige um número de versão novo. Só uma versão por skill fica ativa.
+O rollback volta à aprovação anterior disponível (ordem de aprovação), e a retirada desativa
+a versão sem apagar o histórico. O registro confere a integridade da cópia antes de carregá-la.
 
 O formato e a governança estão no [ADR-007](docs/decisions/ADR-007-Skills.md).
 

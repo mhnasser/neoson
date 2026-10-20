@@ -8,9 +8,10 @@ linha normalizadas, para dar o mesmo valor no Windows e no Linux.
 
 import hashlib
 import re
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 
 import yaml
@@ -74,6 +75,10 @@ class SkillPackage:
     instructions: str
     checksum: str
     files: tuple[str, ...]
+    contents: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "contents", MappingProxyType(dict(self.contents)))
 
     def skill(self) -> Skill:
         meta = self.metadata
@@ -100,7 +105,7 @@ def load_skill(path: Path, known_tools: Collection[str] | None = None) -> SkillP
     if not path.is_dir():
         raise SkillInvalid(path, ["pasta não encontrada"])
     files = _files(path)
-    problems = _layout_problems(path, files)
+    problems: list[str] = []
     texts: dict[str, str] = {}
     for name in files:
         try:
@@ -108,6 +113,27 @@ def load_skill(path: Path, known_tools: Collection[str] | None = None) -> SkillP
         except UnicodeDecodeError:
             problems.append(f"{name}: não está em UTF-8")
 
+    try:
+        package = package_from_texts(path, texts, known_tools)
+    except SkillInvalid as error:
+        raise SkillInvalid(path, [*problems, *error.problems]) from None
+    if problems:
+        raise SkillInvalid(path, problems)
+    return package
+
+
+def package_from_texts(
+    path: Path,
+    texts: Mapping[str, str],
+    known_tools: Collection[str] | None = None,
+) -> SkillPackage:
+    """Valida uma cópia em memória, sem reler arquivos durante a aprovação."""
+    texts = {
+        name: text.replace("\r\n", "\n").replace("\r", "\n")
+        for name, text in texts.items()
+    }
+    files = sorted(texts)
+    problems = _layout_problems(path, files)
     metadata = None
     if METADATA_FILE in texts:
         metadata, metadata_problems = _metadata(texts[METADATA_FILE])
@@ -134,6 +160,7 @@ def load_skill(path: Path, known_tools: Collection[str] | None = None) -> SkillP
         instructions=instructions,
         checksum=checksum(texts),
         files=tuple(files),
+        contents=texts,
     )
 
 
