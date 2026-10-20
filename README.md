@@ -42,8 +42,8 @@ uv sync --package neoson-robot --no-dev
 ```
 
 Endereço do gateway: `--gateway-url` > `NEOSON_GATEWAY_URL` > `http://127.0.0.1:8000`. O robô lê
-só variáveis do processo (não lê o `neoson.env`). Saída 0 em sucesso, 1 se o gateway falhar ou
-não responder e 2 para mensagem ou opção inválida.
+só variáveis do processo (não lê o `neoson.env`). Saída 0 em sucesso; 1 se o gateway falhar, não
+responder ou responder fora do contrato; 2 para mensagem, opção ou URL inválida.
 
 ## API
 

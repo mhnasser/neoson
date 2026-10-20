@@ -37,7 +37,10 @@ class GatewayClient:
             ) from error
 
         if response.is_success:
-            return MessageResponse.model_validate(response.json())
+            try:
+                return MessageResponse.model_validate(response.json())
+            except ValueError:  # corpo não é JSON ou não segue o MessageResponse
+                raise _unexpected(response) from None
         raise _error_from(response)
 
 
@@ -45,10 +48,15 @@ def _error_from(response: httpx2.Response) -> GatewayError:
     try:
         error = ErrorResponse.model_validate(response.json())
     except ValueError:  # corpo não é JSON ou não segue o ErrorResponse
-        return GatewayError(
-            f"O gateway respondeu {response.status_code} fora do formato esperado.",
-            status_code=response.status_code,
-        )
+        return _unexpected(response)
     return GatewayError(
         error.message, status_code=response.status_code, code=error.code
+    )
+
+
+def _unexpected(response: httpx2.Response) -> GatewayError:
+    """Resposta fora do contrato. O corpo recebido não entra na mensagem."""
+    return GatewayError(
+        f"O gateway respondeu {response.status_code} fora do formato esperado.",
+        status_code=response.status_code,
     )

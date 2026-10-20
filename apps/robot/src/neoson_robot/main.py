@@ -7,7 +7,7 @@ import httpx2
 from pydantic import ValidationError
 
 from neoson_robot.client import GatewayClient, GatewayError
-from neoson_robot.config import gateway_url
+from neoson_robot.config import INVALID_GATEWAY_URL, gateway_url
 
 TIMEOUT_SECONDS = 30.0
 
@@ -28,7 +28,11 @@ def main(argv: Sequence[str] | None = None, http: httpx2.Client | None = None) -
     except ValueError as error:
         parser.error(str(error))
 
-    client = http or httpx2.Client(base_url=url, timeout=TIMEOUT_SECONDS)
+    try:
+        client = http or httpx2.Client(base_url=url, timeout=TIMEOUT_SECONDS)
+    except httpx2.InvalidURL:
+        parser.error(INVALID_GATEWAY_URL)
+
     try:
         reply = GatewayClient(client).send(args.text, args.session_id)
     except ValidationError as error:

@@ -70,6 +70,20 @@ def test_client_handles_error_bodies_outside_the_contract() -> None:
     assert caught.value.code is None
 
 
+@pytest.mark.parametrize("body", [b"<html>conteudo-privado</html>", b"{}"])
+def test_client_rejects_invalid_success_responses(body: bytes) -> None:
+    with mock_http(
+        httpx2.MockTransport(lambda request: httpx2.Response(200, content=body))
+    ) as http:
+        with pytest.raises(GatewayError) as caught:
+            GatewayClient(http).send("oi")
+
+    assert caught.value.status_code == 200
+    assert caught.value.code is None
+    assert str(caught.value) == "O gateway respondeu 200 fora do formato esperado."
+    assert caught.value.__suppress_context__
+
+
 def test_client_reports_an_unreachable_gateway() -> None:
     def refuse(request: httpx2.Request) -> httpx2.Response:
         raise httpx2.ConnectError("recusada", request=request)
@@ -107,10 +121,27 @@ def test_gateway_url_precedence_and_default() -> None:
     assert gateway_url("https://outro:9000", environ=env) == "https://outro:9000"
 
 
-@pytest.mark.parametrize("value", ["neoson-servidor.local:8000", "ftp://x", "http://"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "neoson-servidor.local:8000",
+        "ftp://x",
+        "http://",
+        "http://gateway.test:abc",
+        "http://gateway.test:65536",
+        "http://gateway.test:0",
+        "http://:8000",
+        "http://[invalid",
+    ],
+)
 def test_gateway_url_rejects_invalid_values(value: str) -> None:
     with pytest.raises(ValueError, match="NEOSON_GATEWAY_URL"):
         gateway_url(value, environ={})
+
+
+@pytest.mark.parametrize("value", ["http://gateway.test:8000/", "https://[::1]:8443/"])
+def test_gateway_url_accepts_valid_host_and_port(value: str) -> None:
+    assert gateway_url(value, environ={}) == value.rstrip("/")
 
 
 # --- linha de comando ---
@@ -132,6 +163,21 @@ def test_main_returns_1_when_the_gateway_fails(
     assert capsys.readouterr().err == "Erro: Erro interno.\n"
 
 
+@pytest.mark.parametrize("body", [b"<html>conteudo-privado</html>", b"{}"])
+def test_main_reports_invalid_success_as_gateway_failure(
+    capsys: pytest.CaptureFixture[str], body: bytes
+) -> None:
+    with mock_http(
+        httpx2.MockTransport(lambda request: httpx2.Response(200, content=body))
+    ) as http:
+        code = main(["oi"], http=http)
+
+    assert code == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == "Erro: O gateway respondeu 200 fora do formato esperado.\n"
+
+
 def test_main_rejects_an_empty_message_before_sending(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -143,11 +189,33 @@ def test_main_rejects_an_empty_message_before_sending(
     assert "Mensagem inválida" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "value",
+    ["sem-esquema", "http://gateway.test:abc", "http://:8000", "http://[invalid"],
+)
 def test_main_rejects_an_invalid_gateway_url(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], value: str
 ) -> None:
     with pytest.raises(SystemExit) as caught:
-        main(["oi", "--gateway-url", "sem-esquema"])
+        main(["oi", "--gateway-url", value])
 
     assert caught.value.code == 2
-    assert "NEOSON_GATEWAY_URL" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "NEOSON_GATEWAY_URL" in error
+    assert value not in error
+
+
+def test_main_handles_url_rejected_by_http_client(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def invalid_client(*args: object, **kwargs: object) -> httpx2.Client:
+        raise httpx2.InvalidURL("detalhe-privado")
+
+    monkeypatch.setattr(httpx2, "Client", invalid_client)
+    with pytest.raises(SystemExit) as caught:
+        main(["oi", "--gateway-url", "http://gateway.test"])
+
+    assert caught.value.code == 2
+    error = capsys.readouterr().err
+    assert "NEOSON_GATEWAY_URL" in error
+    assert "detalhe-privado" not in error
