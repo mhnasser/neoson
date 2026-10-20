@@ -116,6 +116,16 @@ def now_iso() -> str:
 
 
 def _statements(sql: str) -> list[str]:
-    """Divide o arquivo em comandos. As migrations não usam `;` dentro de strings."""
-    lines = [line for line in sql.splitlines() if not line.lstrip().startswith("--")]
-    return [part.strip() for part in "\n".join(lines).split(";") if part.strip()]
+    """Divide o arquivo em comandos completos (inclusive triggers com `BEGIN … END`)."""
+    statements: list[str] = []
+    buffer = ""
+    for line in sql.splitlines():
+        if not buffer and (not line.strip() or line.lstrip().startswith("--")):
+            continue
+        buffer += line + "\n"
+        if sqlite3.complete_statement(buffer):
+            statements.append(buffer.strip())
+            buffer = ""
+    if buffer.strip():
+        raise ValueError("Migration termina com um comando incompleto.")
+    return statements

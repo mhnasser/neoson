@@ -24,6 +24,7 @@ from neoson_core.engine.persistence import (
     RunRecord,
     SessionNotFound,
 )
+from neoson_core.engine.recall import HistoryHit, HistorySearch
 from neoson_core.engine.route import (
     Complexity,
     ExecutionMode,
@@ -56,6 +57,8 @@ __all__ = [
     "EchoEngine",
     "Engine",
     "ExecutionMode",
+    "HistoryHit",
+    "HistorySearch",
     "InvalidTransition",
     "LLMError",
     "LLMProvider",
