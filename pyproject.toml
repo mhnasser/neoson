@@ -19,7 +19,7 @@ extend-exclude = ["docs"]
 select = ["E", "W", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["neoson_contracts", "neoson_core", "neoson_gateway"]
+known-first-party = ["neoson_contracts", "neoson_core", "neoson_gateway", "neoson_robot"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -32,17 +32,23 @@ testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 
 [tool.importlinter]
-root_packages = ["neoson_contracts", "neoson_core", "neoson_gateway"]
+root_packages = ["neoson_contracts", "neoson_core", "neoson_gateway", "neoson_robot"]
 
 [[tool.importlinter.contracts]]
 name = "Arquitetura em camadas"
 type = "layers"
-layers = ["neoson_gateway", "neoson_core", "neoson_contracts"]
+layers = ["neoson_gateway | neoson_robot", "neoson_core", "neoson_contracts"]
 
 [[tool.importlinter.contracts]]
 name = "Contratos independentes"
 type = "forbidden"
 source_modules = ["neoson_contracts"]
+forbidden_modules = ["neoson_core", "neoson_gateway", "neoson_robot"]
+
+[[tool.importlinter.contracts]]
+name = "Raspberry isolada do servidor"
+type = "forbidden"
+source_modules = ["neoson_robot"]
 forbidden_modules = ["neoson_core", "neoson_gateway"]
 
 [[tool.importlinter.contracts]]

@@ -4,9 +4,10 @@ Assistente pessoal de IA com interface física, motor Python próprio, memória,
 contínua. A especificação técnica e os diagramas estão em [`docs/architecture/`](docs/architecture/);
 as decisões de arquitetura, em [`docs/decisions/`](docs/decisions/).
 
-> **Estado:** fundação pronta (workspace, configuração, CI) e primeiro contrato da API. O gateway
-> recebe mensagens em `POST /api/v1/messages`, mas o motor ainda é provisório (devolve o texto
-> recebido); o Agent Loop e as demais funcionalidades do assistente ainda não foram implementados.
+> **Estado:** fundação pronta (workspace, configuração, CI) e primeiro contrato da API. O cliente
+> `neoson-robot` envia mensagens ao gateway em `POST /api/v1/messages`, mas o motor ainda é
+> provisório (devolve o texto recebido); o Agent Loop e as demais funcionalidades do assistente
+> ainda não foram implementados.
 
 ## Requisitos
 
@@ -30,7 +31,19 @@ hardlinks nelas.
 
 ```bash
 uv run --package neoson-gateway neoson-gateway   # padrão: http://127.0.0.1:8000 (NEOSON_GATEWAY_*)
+uv run --package neoson-robot neoson-robot "Olá, NeoSon"   # envia uma mensagem e mostra a resposta
 ```
+
+O `neoson-robot` é o cliente da Raspberry Pi. Ele depende só de `neoson-contracts` e de um
+cliente HTTP, sem nada do servidor; para instalar apenas ele:
+
+```bash
+uv sync --package neoson-robot --no-dev
+```
+
+Endereço do gateway: `--gateway-url` > `NEOSON_GATEWAY_URL` > `http://127.0.0.1:8000`. O robô lê
+só variáveis do processo (não lê o `neoson.env`). Saída 0 em sucesso, 1 se o gateway falhar ou
+não responder e 2 para mensagem ou opção inválida.
 
 ## API
 
@@ -87,6 +100,7 @@ a cada pull request e a cada push na `main`, com Python 3.13 e as versões do `u
 packages/neoson-contracts/   schemas de transporte compartilhados (ADR-005)
 packages/neoson-core/        motor do NeoSon
 apps/gateway/                gateway HTTP (FastAPI)
+apps/robot/                  cliente da Raspberry Pi (só contratos e HTTP)
 tests/                       testes automatizados
 docs/                        arquitetura, diagramas, decisões e inventário de hardware
 ```

@@ -1,0 +1,22 @@
+[project]
+name = "neoson-robot"
+version = "0.1.0"
+description = "Cliente do NeoSon na Raspberry Pi: fala com o gateway pela API HTTP."
+authors = [{ name = "Mohamad Nasser" }]
+license = "MIT"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "httpx2>=2.14.0",
+    "neoson-contracts",
+    "pydantic>=2.14.1",
+]
+
+[project.scripts]
+neoson-robot = "neoson_robot.main:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+neoson-contracts = { workspace = true }

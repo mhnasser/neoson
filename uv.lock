@@ -7,6 +7,7 @@ members = [
     "neoson-contracts",
     "neoson-core",
     "neoson-gateway",
+    "neoson-robot",
     "neoson-workspace",
 ]
 
@@ -342,6 +343,23 @@ requires-dist = [
     { name = "neoson-contracts", editable = "packages/neoson-contracts" },
     { name = "neoson-core", editable = "packages/neoson-core" },
     { name = "uvicorn", specifier = ">=0.54.0" },
+]
+
+[[package]]
+name = "neoson-robot"
+version = "0.1.0"
+source = { editable = "apps/robot" }
+dependencies = [
+    { name = "httpx2" },
+    { name = "neoson-contracts" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx2", specifier = ">=2.14.0" },
+    { name = "neoson-contracts", editable = "packages/neoson-contracts" },
+    { name = "pydantic", specifier = ">=2.14.1" },
 ]
 
 [[package]]
