@@ -43,7 +43,19 @@ O worker processa os eventos que o gateway grava junto com cada resposta (transa
 [ADR-002](docs/decisions/ADR-002-Persistencia.md)). A entrega é pelo menos uma vez: se o worker
 cair, outro assume o evento quando o lease vence, e `worker_effects` garante que o efeito não se
 repete. Falhas são refeitas com backoff exponencial e, esgotadas as tentativas, vão para
-`dead_letter`. Hoje o único efeito é registrar o uso de tokens de cada execução em `usage_records`.
+`dead_letter`. Os efeitos de hoje: registrar uso e custo de cada execução em `usage_records` e
+atualizar o vault do Obsidian.
+
+### Vault do Obsidian
+
+O worker mantém em `NEOSON_VAULT_PATH` (padrão `data/NeoSon-Vault`) a nota diária
+`Metricas/Diarias/AAAA-MM-DD.md` (YAML frontmatter com execuções, sucesso, tokens, cache e custo) e
+os painéis `Dashboard/Home.md`, `Dashboard/LLM-Custos.md` e `Dashboard/NeoSon-System.md` (fila,
+dead letters e atraso do worker). Só agregados: nenhum texto de conversa, prompt ou segredo vai
+para o vault. A escrita é atômica, e um arquivo só é regravado quando os dados mudam. Para
+regerar tudo a partir do banco, use `neoson-worker --export-vault`; para desligar a exportação,
+`NEOSON_METRICS_EXPORT_ENABLED=false`. O custo usa os preços de `NEOSON_LLM_PRICES` (USD por
+milhão de tokens, por modelo); sem preço, aparece como —.
 
 O `neoson-robot` é o cliente da Raspberry Pi. Ele depende só de `neoson-contracts` e de um
 cliente HTTP, sem nada do servidor; para instalar apenas ele:

@@ -5,15 +5,49 @@ import signal
 import socket
 import threading
 from collections.abc import Sequence
+from contextlib import closing
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from neoson_core.infrastructure.config import ConfigError, load_settings
-from neoson_core.telemetry import usage
+from neoson_core.infrastructure.config import (
+    ConfigError,
+    ServerSettings,
+    load_settings,
+)
+from neoson_core.infrastructure.db import connect, migrate
+from neoson_core.telemetry import usage, vault
+from neoson_core.telemetry.pricing import Price
 from neoson_worker.worker import Handler, RetryPolicy, Worker
 
 
-def build_handlers() -> dict[str, list[Handler]]:
-    record = Handler(usage.HANDLER_NAME, usage.record_usage)
-    return {event_type: [record] for event_type in usage.EVENT_TYPES}
+def build_handlers(settings: ServerSettings | None = None) -> dict[str, list[Handler]]:
+    """Uso e custo primeiro; depois o vault, que já lê o custo desta execução."""
+    prices = {
+        model: Price(p.input, p.output, p.cached_input)
+        for model, p in (settings.llm_prices if settings else {}).items()
+    }
+    handlers = [Handler(usage.HANDLER_NAME, usage.UsageRecorder(prices))]
+    if settings is not None and settings.metrics_export_enabled:
+        exporter = vault.VaultExporter(settings.vault_path, ZoneInfo(settings.timezone))
+        handlers.append(Handler(vault.HANDLER_NAME, exporter))
+    return {event_type: list(handlers) for event_type in usage.EVENT_TYPES}
+
+
+def export_vault(settings: ServerSettings, days: int = 7) -> int:
+    zone = ZoneInfo(settings.timezone)
+    exporter = vault.VaultExporter(settings.vault_path, zone)
+    today = datetime.now(zone).date()
+    with closing(connect(settings.db_path)) as connection:
+        migrate(connection)
+        changed = {
+            path
+            for offset in range(days)
+            for path in exporter.export(connection, today - timedelta(days=offset))
+        }
+    logging.getLogger("neoson_worker").info(
+        "vault em %s: %d arquivo(s) atualizado(s)", settings.vault_path, len(changed)
+    )
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -22,6 +56,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--once", action="store_true", help="processa o que estiver pronto e sai"
+    )
+    parser.add_argument(
+        "--export-vault",
+        action="store_true",
+        help="regera no vault as notas dos últimos 7 dias e os dashboards, e sai",
     )
     args = parser.parse_args(argv)
     try:
@@ -33,9 +72,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
+    if args.export_vault:
+        return export_vault(settings)
+
     worker = Worker(
         db_path=settings.db_path,
-        handlers=build_handlers(),
+        handlers=build_handlers(settings),
         worker_id=f"{socket.gethostname()}:{os.getpid()}",
         lease_seconds=settings.worker_lease_seconds,
         retry=RetryPolicy(max_attempts=settings.worker_max_attempts),

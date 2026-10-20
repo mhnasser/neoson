@@ -9,7 +9,9 @@ from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
+    BaseModel,
     Field,
+    NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
@@ -27,6 +29,12 @@ class ConfigError(Exception):
     """Configuração inválida. A mensagem cita as variáveis, nunca os valores."""
 
 
+class ModelPrice(BaseModel):
+    input: NonNegativeFloat
+    output: NonNegativeFloat
+    cached_input: NonNegativeFloat | None = None
+
+
 class ServerSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="NEOSON_",
@@ -42,6 +50,8 @@ class ServerSettings(BaseSettings):
     llm_provider: Literal["openai", "echo"] = "openai"
     llm_model: str | None = None
     llm_reasoning_effort: str | None = None
+    # Preços em USD por milhão de tokens, por modelo (JSON); sem preço, custo vazio.
+    llm_prices: dict[str, ModelPrice] = Field(default_factory=dict)
     openai_api_key: SecretStr | None = Field(
         default=None, validation_alias="OPENAI_API_KEY"
     )
