@@ -10,6 +10,7 @@ from neoson_core.engine._validation import frozen_mapping, require_text
 from neoson_core.engine.conversation import RunStatus
 from neoson_core.engine.llm import Usage
 from neoson_core.engine.messages import Message
+from neoson_core.engine.skills import SkillRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,10 +47,12 @@ class RunRecord:
     model: str | None = None
     route_version: str | None = None
     events: tuple[OutboxEvent, ...] = ()
+    skills: tuple[SkillRef, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "events", tuple(self.events))
+        object.__setattr__(self, "skills", tuple(self.skills))
 
 
 class SessionNotFound(LookupError):

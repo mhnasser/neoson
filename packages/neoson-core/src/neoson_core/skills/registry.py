@@ -12,6 +12,7 @@ from typing import Literal
 
 from neoson_core.engine import OutboxEvent
 from neoson_core.engine.skills import Skill, SkillNotFound, SkillRef
+from neoson_core.engine.skills import SkillIntegrityError as SkillIntegrityError
 from neoson_core.infrastructure import outbox
 from neoson_core.infrastructure.db import connect, migrate, now_iso, transaction
 from neoson_core.skills.loader import (
@@ -23,10 +24,6 @@ from neoson_core.skills.loader import (
 
 class SkillConflict(ValueError):
     """Uma versão já aprovada não pode receber outro conteúdo."""
-
-
-class SkillIntegrityError(ValueError):
-    """A cópia no registro não corresponde à versão aprovada."""
 
 
 @dataclass(frozen=True, slots=True)

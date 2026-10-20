@@ -29,8 +29,16 @@ from neoson_core.engine.persistence import (
 )
 from neoson_core.engine.route import Router, RouteRequest
 from neoson_core.engine.run import Budget, RunContext, RunState, transition
+from neoson_core.engine.skill_context import (
+    SKILL_LOAD,
+    SKILL_TOOL_DENIED,
+    SKILL_UNAVAILABLE,
+    SkillContext,
+)
+from neoson_core.engine.skills import SkillIntegrityError, SkillRef, SkillRegistry
 from neoson_core.engine.tools import (
     PolicyEngine,
+    RiskLevel,
     ToolCatalog,
     ToolContext,
     ToolRejected,
@@ -92,6 +100,7 @@ class AgentLoop:
         history_max_messages: int = 40,
         memory: CuratedMemory | None = None,
         memory_max_facts: int = 30,
+        skills: SkillRegistry | None = None,
         system_prompt: str = SYSTEM_PROMPT,
         on_state: StateObserver | None = None,
     ) -> None:
@@ -105,6 +114,7 @@ class AgentLoop:
         self._history_max_messages = history_max_messages
         self._memory = memory
         self._memory_max_facts = memory_max_facts
+        self._skills = skills
         self._system_prompt = system_prompt
         self._on_state = on_state
 
@@ -115,7 +125,7 @@ class AgentLoop:
         """
         session_id, history = await self._session(message)
         context = RunContext(session_id=session_id, budget=self._budget)
-        run = _Run(context, self._on_state)
+        run = _Run(context, self._on_state, self._skills)
         user = Message(role=Role.USER, content=message.text)
         try:
             text, model = await self._execute(run, message, history, user)
@@ -154,6 +164,7 @@ class AgentLoop:
         if self._store is None:
             return
         context = run.context
+        skills = (run.skills.active.ref,) if run.skills.active is not None else ()
         await self._store.record_run(
             RunRecord(
                 run_id=context.run_id,
@@ -165,7 +176,8 @@ class AgentLoop:
                 usage=result.usage,
                 model=result.model,
                 route_version=run.route_version,
-                events=(_run_event(context, result, run.route_version),),
+                events=(_run_event(context, result, run.route_version, skills),),
+                skills=skills,
             )
         )
 
@@ -182,9 +194,16 @@ class AgentLoop:
         )
         run.route_version = route.policy_version
         run.advance(RunState.CONTEXT_READY)
-        messages = [await self._system_message(), *history, user]
+        try:
+            await run.skills.prepare()
+        except SkillIntegrityError:
+            raise _Stop("integridade de skill", SKILL_UNAVAILABLE) from None
+        messages = [
+            await self._system_message(run.skills.system_index()),
+            *history,
+            user,
+        ]
         run.transcript.append(user)
-        specs = self._tools.specs() if self._tools is not None else ()
         run.advance(RunState.RUNNING)
 
         for _ in range(self._budget.max_steps):
@@ -194,7 +213,7 @@ class AgentLoop:
                 LLMRequest(
                     model_profile=route.primary_model_profile,
                     messages=tuple(messages),
-                    tools=specs,
+                    tools=run.skills.specs(self._tools.specs() if self._tools else ()),
                 ),
             )
             messages.append(response.message)
@@ -203,14 +222,17 @@ class AgentLoop:
                 return response.message.content, response.model
             replies = await self._handle_tools(run, response.message.tool_calls)
             messages.extend(replies)
-            run.transcript.extend(replies)
+            # Instruções só valem neste run: não persistir procedimentos no histórico.
+            run.transcript.extend(
+                reply for reply in replies if reply.role is not Role.SYSTEM
+            )
 
         raise _Stop(
             "limite de passos",
             "Não consegui concluir dentro do limite de passos desta conversa.",
         )
 
-    async def _system_message(self) -> Message:
+    async def _system_message(self, skill_index: str = "") -> Message:
         now = self._clock()
         parts = [
             self._system_prompt,
@@ -220,9 +242,36 @@ class AgentLoop:
             facts = await self._memory.active(self._memory_max_facts)
             if facts:
                 parts.append(_memory_section(facts, now))
+        if skill_index:
+            parts.append(skill_index)
         return Message(role=Role.SYSTEM, content="\n\n".join(parts))
 
     async def _handle_tools(
+        self, run: "_Run", calls: Sequence[ToolCall]
+    ) -> list[Message]:
+        controls = [call for call in calls if call.name == SKILL_LOAD]
+        normal = [call for call in calls if call.name != SKILL_LOAD]
+        replies: list[Message] = []
+        instructions: list[Message] = []
+        valid = True
+        for call in controls:
+            try:
+                loaded, messages = await run.skills.load(call)
+            except SkillIntegrityError:
+                raise _Stop("integridade de skill", SKILL_UNAVAILABLE) from None
+            valid = valid and loaded
+            replies.extend(message for message in messages if message.role is Role.TOOL)
+            instructions.extend(
+                message for message in messages if message.role is Role.SYSTEM
+            )
+        if valid:
+            replies.extend(await self._handle_catalog_tools(run, normal))
+        else:
+            # Uma falha no carregamento não libera ferramentas sem as restrições.
+            replies.extend(_tool_message(call, SKILL_UNAVAILABLE) for call in normal)
+        return [*replies, *instructions]
+
+    async def _handle_catalog_tools(
         self, run: "_Run", calls: Sequence[ToolCall]
     ) -> list[Message]:
         """Valida e consulta a política de todos os pedidos antes de executar algum."""
@@ -231,11 +280,21 @@ class AgentLoop:
 
         decisions: list[tuple[ToolCall, Verdict | None, str | None]] = []
         for call in calls:
+            skill = run.skills.active
+            if skill is not None and call.name not in skill.allowed_tools:
+                decisions.append((call, None, SKILL_TOOL_DENIED))
+                continue
             try:
                 risk = self._tools.check(call)
             except ToolRejected as rejected:
                 decisions.append((call, None, rejected.summary))
                 continue
+            if (
+                skill is not None
+                and skill.requires_approval
+                and risk is not RiskLevel.FORBIDDEN
+            ):
+                risk = RiskLevel.SENSITIVE_WRITE
             decisions.append((call, self._policy.evaluate(call, risk), None))
 
         pending = [c.name for c, v, _ in decisions if v is Verdict.REQUIRE_APPROVAL]
@@ -260,13 +319,19 @@ class AgentLoop:
 class _Run:
     """Estado mutável de uma execução: estado atual, uso acumulado e prazo."""
 
-    def __init__(self, context: RunContext, on_state: StateObserver | None) -> None:
+    def __init__(
+        self,
+        context: RunContext,
+        on_state: StateObserver | None,
+        skills: SkillRegistry | None,
+    ) -> None:
         self.context = context
         self.state = RunState.RECEIVED
         self.usage = Usage()
         self.model: str | None = None
         self.route_version: str | None = None
         self.transcript: list[Message] = []
+        self.skills = SkillContext(skills)
         self._on_state = on_state
         self._notify()
 
@@ -360,7 +425,10 @@ _EVENT_TYPES = {
 
 
 def _run_event(
-    context: RunContext, result: RunResult, route_version: str | None
+    context: RunContext,
+    result: RunResult,
+    route_version: str | None,
+    skills: Sequence[SkillRef] = (),
 ) -> OutboxEvent:
     """Evento do fim da execução (§10.1); o worker registra uso e custo com ele."""
     return OutboxEvent(
@@ -372,6 +440,7 @@ def _run_event(
             "outcome": result.status.value,
             "model": result.model,
             "route_version": route_version,
+            "skill_ids": [skill.id for skill in skills],
             "usage": {
                 "input_tokens": result.usage.input_tokens,
                 "output_tokens": result.usage.output_tokens,

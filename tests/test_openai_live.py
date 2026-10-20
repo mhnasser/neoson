@@ -21,11 +21,14 @@ from neoson_core.engine import (
     UserMessage,
 )
 from neoson_core.infrastructure.config import load_settings
+from neoson_core.infrastructure.db import connect
 from neoson_core.memory.curated import SqliteCuratedMemory
 from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.rules import RulesRouter
+from neoson_core.skills.loader import load_skill
+from neoson_core.skills.registry import SqliteSkillRegistry
 from neoson_core.tools.calendar_fake import CalendarEvent, FakeCalendar
 from neoson_core.tools.memory_facts import MemoryForget, MemorySave
 from neoson_core.tools.memory_search import MemorySearch
@@ -201,3 +204,50 @@ def test_live_preference_is_remembered_in_another_session(tmp_path: Path) -> Non
     assert [f.content for f in asyncio.run(memory.active(10))]
     assert second.session_id != first.session_id
     assert "vasco" in second.text.lower()
+
+
+def test_live_agent_loads_approved_skill_and_uses_calendar(tmp_path: Path) -> None:
+    db = tmp_path / "neoson.db"
+    registry = SqliteSkillRegistry(db)
+    library = Path(__file__).resolve().parents[1] / "skill_library"
+    # Aprovação só neste banco de teste, sem modificar o catálogo real.
+    registry.approve(load_skill(library / "planejar_dia", ["calendar_list"]))
+    calendar = FakeCalendar.fixed(
+        {
+            date(2026, 10, 21): (
+                CalendarEvent(time(15, 0), "Reunião de planejamento", 60),
+            )
+        }
+    )
+    agent = AgentLoop(
+        provider=live_provider(),
+        router=RulesRouter("balanced"),
+        budget=Budget(max_steps=5, timeout_seconds=90),
+        tools=ToolRegistry([calendar]),
+        store=SqliteConversationStore(db),
+        skills=registry,
+    )
+    result = asyncio.run(
+        agent.run(
+            UserMessage(
+                text="Use a skill planejar_dia para planejar meu dia 2026-10-21."
+            )
+        )
+    )
+    assert result.status is RunStatus.COMPLETED
+    assert "15" in result.text and "planejamento" in result.text.lower()
+    connection = connect(db)
+    try:
+        execution = connection.execute(
+            "SELECT skill_id, outcome FROM skill_executions WHERE run_id = ?",
+            (str(result.run_id),),
+        ).fetchone()
+        calls = connection.execute(
+            "SELECT tool_calls FROM messages WHERE run_id = ?"
+            " AND tool_calls IS NOT NULL",
+            (str(result.run_id),),
+        ).fetchall()
+    finally:
+        connection.close()
+    assert tuple(execution) == ("planejar_dia", "completed")
+    assert any('"name": "calendar_list"' in row[0] for row in calls)

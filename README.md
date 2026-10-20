@@ -143,6 +143,12 @@ aprovar conteúdo diferente exige um número de versão novo. Só uma versão po
 O rollback volta à aprovação anterior disponível (ordem de aprovação), e a retirada desativa
 a versão sem apagar o histórico. O registro confere a integridade da cópia antes de carregá-la.
 
+O modelo recebe um índice das skills ativas e pode carregar uma com a ação `skill_load`.
+O procedimento aprovado entra como instrução apenas na execução atual. Depois do carregamento,
+só as ferramentas declaradas pela skill ficam disponíveis; a política de segurança continua
+valendo, e `requires_approval` exige aprovação também das leituras. Cada execução registra a
+skill e sua versão na mesma transação da conversa e do evento de conclusão.
+
 O formato e a governança estão no [ADR-007](docs/decisions/ADR-007-Skills.md).
 
 ## Configuração

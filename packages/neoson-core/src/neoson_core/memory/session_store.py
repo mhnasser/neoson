@@ -125,6 +125,13 @@ class SqliteConversationStore:
                         record.ended_at.isoformat(),
                     ),
                 )
+            for skill in record.skills:
+                connection.execute(
+                    "INSERT INTO skill_executions"
+                    " (run_id, skill_id, skill_version, outcome)"
+                    " VALUES (?, ?, ?, ?)",
+                    (str(record.run_id), skill.id, skill.version, record.status.value),
+                )
             for event in record.events:
                 outbox.insert(connection, event)
             connection.execute(

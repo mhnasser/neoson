@@ -1,10 +1,14 @@
+import asyncio
 import os
 from pathlib import Path
 
 import pytest
 
-from neoson_core.engine import AgentLoop, EchoEngine
+from neoson_core.engine import AgentLoop, EchoEngine, Role, RunStatus, UserMessage
 from neoson_core.infrastructure.config import ConfigError, load_settings
+from neoson_core.providers.fake import ScriptedProvider, call_tool, reply
+from neoson_core.skills.loader import load_skill
+from neoson_core.skills.registry import SqliteSkillRegistry
 from neoson_gateway.composition import api_token, build_engine
 
 
@@ -41,6 +45,31 @@ def test_openai_with_key_and_model_builds_the_agent_loop(
     monkeypatch.setenv("NEOSON_LLM_MODEL", "modelo-x")
 
     assert isinstance(build_engine(load_settings(env_file=None)), AgentLoop)
+
+
+def test_gateway_connects_approved_skills_to_the_engine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "chave-ficticia")
+    monkeypatch.setenv("NEOSON_LLM_MODEL", "modelo-x")
+    monkeypatch.setenv("NEOSON_DB_PATH", str(tmp_path / "neoson.db"))
+    settings = load_settings(env_file=None)
+    source = Path(__file__).resolve().parents[1] / "skill_library" / "planejar_dia"
+    SqliteSkillRegistry(settings.db_path).approve(load_skill(source))
+    provider = ScriptedProvider(
+        [
+            call_tool("skill_load", {"skill_id": "planejar_dia", "version": "1.0.0"}),
+            reply("Plano pronto."),
+        ]
+    )
+    monkeypatch.setattr(
+        "neoson_gateway.composition.OpenAIProvider.from_api_key",
+        lambda **kwargs: provider,
+    )
+    result = asyncio.run(build_engine(settings).run(UserMessage("Planeje meu dia.")))
+    assert result.status is RunStatus.COMPLETED
+    assert "planejar_dia" in provider.requests[0].messages[0].content
+    assert provider.requests[1].messages[-1].role is Role.SYSTEM
 
 
 def test_unknown_provider_is_rejected_by_the_configuration(

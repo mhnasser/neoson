@@ -18,6 +18,7 @@ from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.rules import RulesRouter
+from neoson_core.skills.registry import SqliteSkillRegistry
 from neoson_core.tools.calendar_fake import FakeCalendar
 from neoson_core.tools.memory_facts import MemoryForget, MemorySave
 from neoson_core.tools.memory_search import MemorySearch
@@ -72,6 +73,7 @@ def build_engine(settings: ServerSettings) -> Engine:
         history_max_messages=settings.history_max_messages,
         memory=memory,
         memory_max_facts=settings.memory_max_facts,
+        skills=SqliteSkillRegistry(settings.db_path),
     )
 
 

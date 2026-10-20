@@ -49,6 +49,10 @@ class SkillNotFound(LookupError):
     """Não há versão aprovada e ativa com esse id e versão."""
 
 
+class SkillIntegrityError(ValueError):
+    """A cópia no registro não corresponde à versão aprovada."""
+
+
 class SkillRegistry(Protocol):
     async def index(self) -> Sequence[SkillRef]:
         """Skills ativas, em ordem de id."""
