@@ -169,6 +169,10 @@ falhar. Avaliar não aprova nem altera a versão ativa.
 
 O formato e a governança estão no [ADR-007](docs/decisions/ADR-007-Skills.md).
 
+O armazenamento de propostas de melhoria fica separado do catálogo aprovado e preserva a
+versão de origem e suas evidências ([ADR-008](docs/decisions/ADR-008-Propostas-Skills.md)).
+Geração automática, avaliação comparativa e CLI de revisão ainda são etapas futuras.
+
 ## Configuração
 
 ```bash
