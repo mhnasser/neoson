@@ -7,8 +7,9 @@ as decisões de arquitetura, em [`docs/decisions/`](docs/decisions/).
 > **Estado:** fundação pronta (workspace, configuração, CI) e primeira versão do motor. O cliente
 > `neoson-robot` envia mensagens ao gateway em `POST /api/v1/messages`, e o Agent Loop responde
 > pelo modelo configurado (OpenAI), com roteador por regras, limites de passos, tempo e tokens, e
-> ferramentas autorizadas por uma Policy Engine (por enquanto, uma agenda de demonstração).
-> Persistência da conversa, autenticação e worker ainda estão em construção.
+> ferramentas autorizadas por uma Policy Engine (por enquanto, uma agenda de demonstração). A API
+> exige token, e a conversa fica gravada em SQLite (sobrevive a reinícios). O worker que consome
+> os eventos ainda está em construção.
 
 ## Requisitos
 
@@ -42,6 +43,9 @@ cliente HTTP, sem nada do servidor; para instalar apenas ele:
 uv sync --package neoson-robot --no-dev
 ```
 
+O gateway exige `NEOSON_API_TOKEN`, e o robô envia o mesmo token (`Authorization: Bearer`). Para
+continuar uma conversa, use `--show-session` e depois `--session-id <id>`.
+
 Endereço do gateway: `--gateway-url` > `NEOSON_GATEWAY_URL` > `http://127.0.0.1:8000`. O robô lê
 só variáveis do processo (não lê o `neoson.env`). Saída 0 em sucesso; 1 se o gateway falhar, não
 responder ou responder fora do contrato; 2 para mensagem, opção ou URL inválida.
@@ -51,7 +55,7 @@ responder ou responder fora do contrato; 2 para mensagem, opção ou URL inváli
 | Método e rota | Uso |
 |---|---|
 | `GET /api/v1/health/live` | Indica que o processo está ativo |
-| `POST /api/v1/messages` | Recebe `{"text": "..."}` (e `session_id` opcional) e devolve a resposta do NeoSon |
+| `POST /api/v1/messages` | Recebe `{"text": "..."}` (e `session_id` opcional) e devolve a resposta e o `session_id`; exige `Authorization: Bearer <NEOSON_API_TOKEN>` |
 
 A resposta vem do Agent Loop, pelo modelo configurado em `NEOSON_LLM_MODEL`. O modelo pode usar
 ferramentas registradas; cada pedido é validado e passa pela Policy Engine, e ações sensíveis
@@ -82,7 +86,10 @@ O servidor lê a configuração com `neoson_core.infrastructure.config.load_sett
 - **Precedência:** variáveis do processo > `neoson.env` no diretório atual > valores padrão.
 - **Validação:** tipos e limites são conferidos na inicialização. Um valor inválido encerra o
   gateway com uma mensagem que cita a variável, sem mostrar o valor recebido.
-- **Segredos:** `OPENAI_API_KEY` fica oculta em `repr`, logs e mensagens de erro.
+- **Segredos:** `OPENAI_API_KEY` e `NEOSON_API_TOKEN` ficam ocultos em `repr`, logs e mensagens
+  de erro.
+- **Dados:** a conversa fica em `NEOSON_DB_PATH` (padrão `data/neoson.db`, fora do Git). O
+  esquema é criado e migrado na inicialização ([ADR-002](docs/decisions/ADR-002-Persistencia.md)).
 - Variáveis desconhecidas e valores em branco são ignorados (valem os padrões).
 
 O [`.env.example`](.env.example) lista todas as variáveis, com os padrões e os valores aceitos.

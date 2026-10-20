@@ -10,6 +10,8 @@ from neoson_core.engine import RunResult, RunStatus, UserMessage
 from neoson_gateway.app import create_app
 
 URL = "/api/v1/messages"
+TOKEN = "token-de-teste"
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 
 class FakeEngine:
@@ -34,7 +36,7 @@ def engine() -> FakeEngine:
 
 @pytest.fixture
 def client(engine: FakeEngine) -> TestClient:
-    return TestClient(create_app(engine))
+    return TestClient(create_app(engine, TOKEN), headers=AUTH)
 
 
 def assert_invalid(response: Any, location: str) -> ErrorResponse:
@@ -85,7 +87,7 @@ def test_accepts_text_at_the_maximum_length(client: TestClient) -> None:
 def test_every_run_status_maps_to_the_contract(
     status: RunStatus, expected: str
 ) -> None:
-    client = TestClient(create_app(FakeEngine(status)))
+    client = TestClient(create_app(FakeEngine(status), TOKEN), headers=AUTH)
 
     response = client.post(URL, json={"text": "oi"})
 
@@ -184,7 +186,9 @@ def test_unknown_route_and_wrong_method_return_error_contract(
 
 
 def test_engine_failure_returns_internal_error_without_details() -> None:
-    client = TestClient(create_app(BrokenEngine()), raise_server_exceptions=False)
+    client = TestClient(
+        create_app(BrokenEngine(), TOKEN), headers=AUTH, raise_server_exceptions=False
+    )
 
     response = client.post(URL, json={"text": "oi"})
 
@@ -192,3 +196,42 @@ def test_engine_failure_returns_internal_error_without_details() -> None:
     error = ErrorResponse.model_validate(response.json())
     assert (error.code, error.message) == ("internal_error", "Erro interno.")
     assert "não deve vazar" not in response.text
+
+
+# --- autenticação ---
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer errado"}, {"Authorization": f"Basic {TOKEN}"}],
+)
+def test_messages_require_the_api_token(
+    engine: FakeEngine, headers: dict[str, str]
+) -> None:
+    client = TestClient(create_app(engine, TOKEN))
+
+    response = client.post(URL, json={"text": "oi"}, headers=headers)
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    error = ErrorResponse.model_validate(response.json())
+    assert error.code == "unauthorized"
+    assert engine.received == []
+
+
+def test_health_stays_open_without_token(engine: FakeEngine) -> None:
+    client = TestClient(create_app(engine, TOKEN))
+
+    assert client.get("/api/v1/health/live").status_code == 200
+
+
+def test_gateway_refuses_to_start_without_a_token(engine: FakeEngine) -> None:
+    with pytest.raises(ValueError):
+        create_app(engine, "")
+
+
+def test_openapi_declares_the_bearer_scheme(client: TestClient) -> None:
+    spec = client.get("/openapi.json").json()
+
+    assert spec["components"]["securitySchemes"]["HTTPBearer"]["scheme"] == "bearer"
+    assert spec["paths"][URL]["post"]["security"] == [{"HTTPBearer": []}]

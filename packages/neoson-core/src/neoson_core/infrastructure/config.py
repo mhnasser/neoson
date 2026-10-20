@@ -52,6 +52,7 @@ class ServerSettings(BaseSettings):
     primary_model_profile: str = "balanced"
     router_policy: str = "rules-v1"
     max_agent_steps: PositiveInt = 12
+    history_max_messages: PositiveInt = 40
     run_timeout_seconds: PositiveFloat = 120.0
     max_subagents: NonNegativeInt = 2
     approval_mode: Literal["required_for_sensitive", "always"] = (
@@ -62,6 +63,7 @@ class ServerSettings(BaseSettings):
     memory_graph_enabled: bool = False
     metrics_export_enabled: bool = True
 
+    api_token: SecretStr | None = None
     gateway_host: str = "127.0.0.1"
     gateway_port: int = Field(default=8000, ge=1, le=65535)
 

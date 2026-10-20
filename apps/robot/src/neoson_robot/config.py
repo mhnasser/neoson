@@ -27,3 +27,8 @@ def gateway_url(
     if parts.scheme not in {"http", "https"} or not parts.hostname or port == 0:
         raise ValueError(INVALID_GATEWAY_URL)
     return url.rstrip("/")
+
+
+def api_token(environ: Mapping[str, str] = os.environ) -> str | None:
+    """Token de API do gateway (`NEOSON_API_TOKEN`), só de variável do processo."""
+    return environ.get("NEOSON_API_TOKEN") or None

@@ -22,6 +22,7 @@ def test_main_starts_uvicorn_with_configured_host_port_and_log_level(
     calls: list[dict[str, Any]] = []
     monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append(kwargs))
     monkeypatch.setenv("NEOSON_LLM_PROVIDER", "echo")
+    monkeypatch.setenv("NEOSON_API_TOKEN", "token-de-teste")
     monkeypatch.setenv("NEOSON_GATEWAY_PORT", "9123")
     monkeypatch.setenv("NEOSON_LOG_LEVEL", "WARNING")
 
@@ -34,6 +35,7 @@ def test_main_exits_with_clear_message_on_invalid_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+    monkeypatch.setenv("NEOSON_API_TOKEN", "token-de-teste")
     monkeypatch.setenv("NEOSON_GATEWAY_PORT", "porta")
 
     with pytest.raises(SystemExit) as caught:

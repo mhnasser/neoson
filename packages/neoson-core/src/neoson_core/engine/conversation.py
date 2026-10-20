@@ -10,6 +10,7 @@ from neoson_core.engine.llm import Usage
 class UserMessage:
     text: str
     session_id: UUID | None = None
+    channel: str = "http"
 
 
 class RunStatus(StrEnum):
@@ -25,6 +26,7 @@ class RunResult:
     status: RunStatus
     usage: Usage = field(default_factory=Usage)
     model: str | None = None
+    session_id: UUID | None = None
 
 
 class Engine(Protocol):

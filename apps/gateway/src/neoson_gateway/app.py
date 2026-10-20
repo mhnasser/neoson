@@ -1,9 +1,12 @@
-from collections.abc import Mapping
+import hmac
+from collections.abc import Awaitable, Callable, Mapping
 from http import HTTPStatus
+from typing import Annotated
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.exceptions import HTTPException
 
 from neoson_contracts.api.v1.errors import ErrorDetail, ErrorResponse
@@ -12,7 +15,7 @@ from neoson_contracts.api.v1.messages import (
     MessageResponse,
     MessageStatus,
 )
-from neoson_core.engine import Engine, RunStatus, UserMessage
+from neoson_core.engine import Engine, RunStatus, SessionNotFound, UserMessage
 from neoson_gateway import __version__
 
 health = APIRouter(prefix="/api/v1/health", tags=["health"])
@@ -31,30 +34,76 @@ _STATUS: dict[RunStatus, MessageStatus] = {
 }
 
 
-def messages_router(engine: Engine) -> APIRouter:
-    router = APIRouter(prefix="/api/v1", tags=["messages"])
+_bearer = HTTPBearer(auto_error=False, description="Token de API (NEOSON_API_TOKEN)")
+
+
+def require_token(
+    expected: str,
+) -> Callable[[HTTPAuthorizationCredentials | None], Awaitable[None]]:
+    """Dependência que exige `Authorization: Bearer <token>` (comparação constante)."""
+    expected_bytes = expected.encode("utf-8")
+
+    async def check(
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    ) -> None:
+        given = credentials.credentials.encode("utf-8") if credentials else b""
+        if not hmac.compare_digest(given, expected_bytes):
+            raise HTTPException(
+                status_code=401,
+                detail="Token de API ausente ou inválido.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    return check
+
+
+def messages_router(engine: Engine, api_token: str) -> APIRouter:
+    router = APIRouter(
+        prefix="/api/v1",
+        tags=["messages"],
+        dependencies=[Depends(require_token(api_token))],
+    )
 
     @router.post(
         "/messages",
         response_model=MessageResponse,
-        responses={422: {"model": ErrorResponse}},
+        responses={
+            401: {"model": ErrorResponse},
+            404: {"model": ErrorResponse},
+            422: {"model": ErrorResponse},
+        },
     )
-    async def receive_message(request: MessageRequest) -> MessageResponse:
+    async def receive_message(
+        request: MessageRequest,
+    ) -> MessageResponse | JSONResponse:
         """Recebe uma mensagem do usuário e devolve a resposta do NeoSon."""
-        result = await engine.run(
-            UserMessage(text=request.text, session_id=request.session_id)
-        )
+        try:
+            result = await engine.run(
+                UserMessage(text=request.text, session_id=request.session_id)
+            )
+        except SessionNotFound:
+            return _error(
+                404,
+                ErrorResponse(
+                    code="session_not_found", message="Sessão não encontrada."
+                ),
+            )
         return MessageResponse(
-            run_id=result.run_id, text=result.text, status=_STATUS[result.status]
+            run_id=result.run_id,
+            text=result.text,
+            status=_STATUS[result.status],
+            session_id=result.session_id,
         )
 
     return router
 
 
-def create_app(engine: Engine) -> FastAPI:
+def create_app(engine: Engine, api_token: str) -> FastAPI:
+    if not api_token:
+        raise ValueError("O gateway exige um token de API.")
     app = FastAPI(title="NeoSon Gateway", version=__version__)
     app.include_router(health)
-    app.include_router(messages_router(engine))
+    app.include_router(messages_router(engine, api_token))
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(

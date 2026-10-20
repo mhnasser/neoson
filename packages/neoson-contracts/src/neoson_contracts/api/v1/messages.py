@@ -19,3 +19,5 @@ class MessageResponse(BaseModel):
     run_id: UUID
     text: str
     status: MessageStatus
+    # Acrescentado depois da v1 inicial: opcional, para clientes antigos (ADR-005).
+    session_id: UUID | None = None

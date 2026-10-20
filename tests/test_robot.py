@@ -10,6 +10,13 @@ from neoson_robot.client import GatewayClient, GatewayError
 from neoson_robot.config import DEFAULT_GATEWAY_URL, gateway_url
 from neoson_robot.main import main
 
+TOKEN = "token-de-teste"
+
+
+@pytest.fixture(autouse=True)
+def robot_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEOSON_API_TOKEN", TOKEN)
+
 
 class RecordingEngine(EchoEngine):
     def __init__(self) -> None:
@@ -28,7 +35,7 @@ class BrokenEngine:
 def gateway(engine: Engine | None = None) -> TestClient:
     """Gateway real em processo, sem rede."""
     return TestClient(
-        create_app(engine or EchoEngine()),
+        create_app(engine or EchoEngine(), TOKEN),
         raise_server_exceptions=False,
     )
 
@@ -44,7 +51,7 @@ def test_client_talks_to_the_real_gateway_in_process() -> None:
     engine = RecordingEngine()
     session = uuid4()
 
-    reply = GatewayClient(gateway(engine)).send("Olá, NeoSon", session)
+    reply = GatewayClient(gateway(engine), TOKEN).send("Olá, NeoSon", session)
 
     assert (reply.text, reply.status) == ("Olá, NeoSon", "completed")
     assert engine.received == [UserMessage(text="Olá, NeoSon", session_id=session)]
@@ -52,7 +59,7 @@ def test_client_talks_to_the_real_gateway_in_process() -> None:
 
 def test_client_raises_gateway_error_with_the_error_contract() -> None:
     with pytest.raises(GatewayError) as caught:
-        GatewayClient(gateway(BrokenEngine())).send("oi")
+        GatewayClient(gateway(BrokenEngine()), TOKEN).send("oi")
 
     assert (caught.value.status_code, caught.value.code) == (500, "internal_error")
     assert str(caught.value) == "Erro interno."
@@ -219,3 +226,51 @@ def test_main_handles_url_rejected_by_http_client(
     error = capsys.readouterr().err
     assert "NEOSON_GATEWAY_URL" in error
     assert "detalhe-privado" not in error
+
+
+def test_client_sends_the_api_token() -> None:
+    seen: list[str | None] = []
+
+    def capture(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request.headers.get("authorization"))
+        return httpx2.Response(
+            200, json={"run_id": str(uuid4()), "text": "ok", "status": "completed"}
+        )
+
+    GatewayClient(mock_http(httpx2.MockTransport(capture)), "abc").send("oi")
+
+    assert seen == ["Bearer abc"]
+
+
+def test_main_without_token_is_rejected_by_the_gateway(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("NEOSON_API_TOKEN")
+
+    code = main(["oi"], http=gateway())
+
+    assert code == 1
+    assert capsys.readouterr().err == "Erro: Token de API ausente ou inválido.\n"
+
+
+def test_main_can_show_the_session_on_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = uuid4()
+
+    def answer(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
+            200,
+            json={
+                "run_id": str(uuid4()),
+                "text": "ok",
+                "status": "completed",
+                "session_id": str(session),
+            },
+        )
+
+    code = main(["oi", "--show-session"], http=mock_http(httpx2.MockTransport(answer)))
+
+    output = capsys.readouterr()
+    assert code == 0
+    assert (output.out, output.err) == ("ok\n", f"sessão: {session}\n")

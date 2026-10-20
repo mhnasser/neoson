@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from neoson_core.engine.conversation import RunResult, RunStatus, UserMessage
 from neoson_core.engine.llm import (
@@ -20,6 +20,11 @@ from neoson_core.engine.messages import (
     ToolCall,
     ToolResult,
     ToolResultStatus,
+)
+from neoson_core.engine.persistence import (
+    ConversationStore,
+    OutboxEvent,
+    RunRecord,
 )
 from neoson_core.engine.route import Router, RouteRequest
 from neoson_core.engine.run import Budget, RunContext, RunState, transition
@@ -82,6 +87,8 @@ class AgentLoop:
         tools: ToolCatalog | None = None,
         policy: PolicyEngine | None = None,
         clock: Clock | None = None,
+        store: ConversationStore | None = None,
+        history_max_messages: int = 40,
         system_prompt: str = SYSTEM_PROMPT,
         on_state: StateObserver | None = None,
     ) -> None:
@@ -91,37 +98,87 @@ class AgentLoop:
         self._tools = tools
         self._policy = policy or PolicyEngine()
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._store = store
+        self._history_max_messages = history_max_messages
         self._system_prompt = system_prompt
         self._on_state = on_state
 
     async def run(self, message: UserMessage) -> RunResult:
-        context = RunContext(
-            session_id=message.session_id or uuid4(), budget=self._budget
-        )
+        """Executa um pedido; com `store`, continua a sessão e grava o resultado.
+
+        `SessionNotFound` sobe ao chamador quando a sessão informada não existe.
+        """
+        session_id, history = await self._session(message)
+        context = RunContext(session_id=session_id, budget=self._budget)
         run = _Run(context, self._on_state)
+        user = Message(role=Role.USER, content=message.text)
         try:
-            text, model = await self._execute(run, message)
+            text, model = await self._execute(run, message, history, user)
         except _Suspend as suspend:
             run.advance(RunState.WAITING_APPROVAL)
-            return run.result(suspend.user_text, RunStatus.NEEDS_APPROVAL)
+            result = run.result(suspend.user_text, RunStatus.NEEDS_APPROVAL)
+            # Sem o pedido de ferramenta pendente: o histórico não fica com chamada
+            # órfã.
+            transcript = [user, Message(role=Role.ASSISTANT, content=result.text)]
         except _Stop as stop:
             logger.warning("run %s interrompido: %s", context.run_id, stop.reason)
             run.advance(RunState.FAILED)
-            return run.result(stop.user_text, RunStatus.FAILED)
-        run.advance(RunState.COMPLETED)
-        run.model = model
-        return run.result(text, RunStatus.COMPLETED)
+            result = run.result(stop.user_text, RunStatus.FAILED)
+            transcript = [user, Message(role=Role.ASSISTANT, content=result.text)]
+        else:
+            run.advance(RunState.COMPLETED)
+            run.model = model
+            result = run.result(text, RunStatus.COMPLETED)
+            transcript = run.transcript
+        await self._record(run, result, transcript)
+        return result
 
-    async def _execute(self, run: "_Run", message: UserMessage) -> tuple[str, str]:
+    async def _session(self, message: UserMessage) -> tuple[UUID, tuple[Message, ...]]:
+        if self._store is None:
+            return message.session_id or uuid4(), ()
+        if message.session_id is None:
+            return await self._store.create_session(message.channel), ()
+        history = await self._store.load_history(
+            message.session_id, self._history_max_messages
+        )
+        return message.session_id, history
+
+    async def _record(
+        self, run: "_Run", result: RunResult, transcript: Sequence[Message]
+    ) -> None:
+        if self._store is None:
+            return
+        context = run.context
+        await self._store.record_run(
+            RunRecord(
+                run_id=context.run_id,
+                session_id=context.session_id,
+                status=result.status,
+                started_at=context.started_at,
+                ended_at=datetime.now(UTC),
+                messages=tuple(transcript),
+                usage=result.usage,
+                model=result.model,
+                route_version=run.route_version,
+                events=(_run_event(context, result, run.route_version),),
+            )
+        )
+
+    async def _execute(
+        self,
+        run: "_Run",
+        message: UserMessage,
+        history: Sequence[Message],
+        user: Message,
+    ) -> tuple[str, str]:
         run.advance(RunState.ROUTING)
         route = await self._router.decide(
             RouteRequest(text=message.text, session_id=message.session_id)
         )
+        run.route_version = route.policy_version
         run.advance(RunState.CONTEXT_READY)
-        messages = [
-            self._system_message(),
-            Message(role=Role.USER, content=message.text),
-        ]
+        messages = [self._system_message(), *history, user]
+        run.transcript.append(user)
         specs = self._tools.specs() if self._tools is not None else ()
         run.advance(RunState.RUNNING)
 
@@ -136,9 +193,12 @@ class AgentLoop:
                 ),
             )
             messages.append(response.message)
+            run.transcript.append(response.message)
             if not response.message.tool_calls:
                 return response.message.content, response.model
-            messages.extend(await self._handle_tools(run, response.message.tool_calls))
+            replies = await self._handle_tools(run, response.message.tool_calls)
+            messages.extend(replies)
+            run.transcript.extend(replies)
 
         raise _Stop(
             "limite de passos",
@@ -193,6 +253,8 @@ class _Run:
         self.state = RunState.RECEIVED
         self.usage = Usage()
         self.model: str | None = None
+        self.route_version: str | None = None
+        self.transcript: list[Message] = []
         self._on_state = on_state
         self._notify()
 
@@ -207,6 +269,7 @@ class _Run:
             status=status,
             usage=self.usage,
             model=self.model,
+            session_id=self.context.session_id,
         )
 
     def check_limits(self) -> None:
@@ -259,3 +322,32 @@ class _Run:
 
 def _tool_message(call: ToolCall, text: str) -> Message:
     return Message(role=Role.TOOL, content=text, tool_call_id=call.id)
+
+
+_EVENT_TYPES = {
+    RunStatus.COMPLETED: "neoson.run.completed",
+    RunStatus.FAILED: "neoson.run.failed",
+    RunStatus.NEEDS_APPROVAL: "neoson.run.waiting_approval",
+}
+
+
+def _run_event(
+    context: RunContext, result: RunResult, route_version: str | None
+) -> OutboxEvent:
+    """Evento do fim da execução (§10.1); o worker registra uso e custo com ele."""
+    return OutboxEvent(
+        type=_EVENT_TYPES[result.status],
+        run_id=context.run_id,
+        session_id=context.session_id,
+        correlation_id=context.trace_id,
+        payload={
+            "outcome": result.status.value,
+            "model": result.model,
+            "route_version": route_version,
+            "usage": {
+                "input_tokens": result.usage.input_tokens,
+                "output_tokens": result.usage.output_tokens,
+                "cached_tokens": result.usage.cached_tokens,
+            },
+        },
+    )

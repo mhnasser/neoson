@@ -7,7 +7,7 @@ import httpx2
 from pydantic import ValidationError
 
 from neoson_robot.client import GatewayClient, GatewayError
-from neoson_robot.config import INVALID_GATEWAY_URL, gateway_url
+from neoson_robot.config import INVALID_GATEWAY_URL, api_token, gateway_url
 
 TIMEOUT_SECONDS = 30.0
 
@@ -21,6 +21,11 @@ def main(argv: Sequence[str] | None = None, http: httpx2.Client | None = None) -
     parser.add_argument("text", help="texto da mensagem")
     parser.add_argument("--gateway-url", help="padrão: NEOSON_GATEWAY_URL ou local")
     parser.add_argument("--session-id", type=UUID, help="continua uma sessão")
+    parser.add_argument(
+        "--show-session",
+        action="store_true",
+        help="mostra o ID da sessão (no stderr), para continuar a conversa depois",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -34,7 +39,7 @@ def main(argv: Sequence[str] | None = None, http: httpx2.Client | None = None) -
         parser.error(INVALID_GATEWAY_URL)
 
     try:
-        reply = GatewayClient(client).send(args.text, args.session_id)
+        reply = GatewayClient(client, api_token()).send(args.text, args.session_id)
     except ValidationError as error:
         problems = "; ".join(detail["msg"] for detail in error.errors())
         print(f"Mensagem inválida: {problems}", file=sys.stderr)
@@ -47,4 +52,6 @@ def main(argv: Sequence[str] | None = None, http: httpx2.Client | None = None) -
             client.close()
 
     print(reply.text)
+    if args.show_session and reply.session_id is not None:
+        print(f"sessão: {reply.session_id}", file=sys.stderr)
     return 0

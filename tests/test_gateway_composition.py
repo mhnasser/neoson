@@ -5,7 +5,7 @@ import pytest
 
 from neoson_core.engine import AgentLoop, EchoEngine
 from neoson_core.infrastructure.config import ConfigError, load_settings
-from neoson_gateway.composition import build_engine
+from neoson_gateway.composition import api_token, build_engine
 
 
 @pytest.fixture(autouse=True)
@@ -50,3 +50,28 @@ def test_unknown_provider_is_rejected_by_the_configuration(
 
     with pytest.raises(ConfigError, match="NEOSON_LLM_PROVIDER"):
         load_settings(env_file=None)
+
+
+def test_api_token_is_required() -> None:
+    with pytest.raises(ConfigError, match="NEOSON_API_TOKEN"):
+        api_token(load_settings(env_file=None))
+
+
+def test_api_token_comes_from_the_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEOSON_API_TOKEN", "segredo-do-gateway")
+
+    assert api_token(load_settings(env_file=None)) == "segredo-do-gateway"
+
+
+def test_openai_mode_creates_the_conversation_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "chave-ficticia")
+    monkeypatch.setenv("NEOSON_LLM_MODEL", "modelo-x")
+    monkeypatch.setenv("NEOSON_DB_PATH", str(tmp_path / "db" / "neoson.db"))
+
+    build_engine(load_settings(env_file=None))
+
+    assert (tmp_path / "db" / "neoson.db").exists()

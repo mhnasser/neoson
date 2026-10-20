@@ -22,14 +22,17 @@ class GatewayError(Exception):
 class GatewayClient:
     """Envia mensagens ao gateway pela API v1 (contratos de `neoson-contracts`)."""
 
-    def __init__(self, http: httpx2.Client) -> None:
+    def __init__(self, http: httpx2.Client, token: str | None = None) -> None:
         self._http = http
+        self._headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     def send(self, text: str, session_id: UUID | None = None) -> MessageResponse:
         request = MessageRequest(text=text, session_id=session_id)
         try:
             response = self._http.post(
-                MESSAGES_PATH, json=request.model_dump(mode="json")
+                MESSAGES_PATH,
+                json=request.model_dump(mode="json"),
+                headers=self._headers,
             )
         except httpx2.HTTPError as error:
             raise GatewayError(
