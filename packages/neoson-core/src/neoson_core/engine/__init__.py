@@ -18,6 +18,12 @@ from neoson_core.engine.messages import (
     ToolResult,
     ToolResultStatus,
 )
+from neoson_core.engine.persistence import (
+    ConversationStore,
+    OutboxEvent,
+    RunRecord,
+    SessionNotFound,
+)
 from neoson_core.engine.route import (
     Complexity,
     ExecutionMode,
@@ -38,6 +44,7 @@ __all__ = [
     "AgentLoop",
     "Budget",
     "Complexity",
+    "ConversationStore",
     "EchoEngine",
     "Engine",
     "ExecutionMode",
@@ -47,14 +54,17 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "Message",
+    "OutboxEvent",
     "Role",
     "RouteDecision",
     "RouteRequest",
     "Router",
     "RunContext",
+    "RunRecord",
     "RunResult",
     "RunState",
     "RunStatus",
+    "SessionNotFound",
     "ToolCall",
     "ToolResult",
     "ToolResultStatus",

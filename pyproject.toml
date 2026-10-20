@@ -77,6 +77,21 @@ source_modules = [
 forbidden_modules = ["openai"]
 allow_indirect_imports = true
 
+[[tool.importlinter.contracts]]
+name = "Adaptadores independentes entre si"
+type = "independence"
+modules = ["neoson_core.providers", "neoson_core.routing", "neoson_core.memory"]
+
+[[tool.importlinter.contracts]]
+name = "Infraestrutura não depende de adaptadores"
+type = "forbidden"
+source_modules = ["neoson_core.infrastructure"]
+forbidden_modules = [
+    "neoson_core.memory",
+    "neoson_core.providers",
+    "neoson_core.routing",
+]
+
 [dependency-groups]
 dev = [
     "httpx2>=2.14.0",
