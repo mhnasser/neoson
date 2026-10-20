@@ -171,7 +171,38 @@ O formato e a governança estão no [ADR-007](docs/decisions/ADR-007-Skills.md).
 
 O armazenamento de propostas de melhoria fica separado do catálogo aprovado e preserva a
 versão de origem e suas evidências ([ADR-008](docs/decisions/ADR-008-Propostas-Skills.md)).
-Geração automática, avaliação comparativa e CLI de revisão ainda são etapas futuras.
+O executor opcional `neoson-curator` gera candidatos a partir de falhas de skills ou
+avaliações reprovadas. Avaliação comparativa e CLI de revisão ainda são etapas futuras.
+
+### Curadoria de skills
+
+Desativada por padrão (`NEOSON_CURATION_ENABLED=false`). Para experimentar, configure essa
+variável como `true` no ambiente do worker e do executor e execute:
+
+```bash
+uv run --package neoson-worker neoson-worker --once   # agenda sinais elegíveis da outbox
+uv run --package neoson-worker neoson-curator --once  # tenta um job, sem ativar a proposta
+```
+
+Sem `--once`, os dois processos permanecem ativos. A conversa não espera a curadoria;
+o worker só agenda e o executor chama o modelo fora das transações do SQLite. Não são
+enviadas transcrições de conversas: o modelo recebe o procedimento e um sinal de falha
+ou um resumo limitado da avaliação, tratados como dados não confiáveis. Não há ferramentas
+disponíveis nessa chamada, e candidatos só podem mudar o procedimento e a versão.
+
+Os padrões são cinco jobs por dia UTC, três tentativas por job, 30 segundos por chamada,
+12 mil caracteres de entrada, três mil tokens de saída e 60 mil tokens reservados por dia.
+As reservas usam bytes UTF-8 da entrada, margem de protocolo e limite de saída; tentativas
+interrompidas também consomem reserva. Apenas um job por skill fica pendente/em execução;
+sinais adicionais são agrupados, e sinais além do teto diário não criam jobs.
+
+`NEOSON_CURATION_MAX_DAILY_COST_USD` permite um teto estimado adicional. Ele exige preços
+configurados em `NEOSON_LLM_PRICES`; sem preço, a execução fica pendente com `price_missing`.
+Custos/reservas desconhecidos anteriores também impedem ultrapassar esse teto. Sem teto em
+USD, os limites de volume, tokens e tempo continuam valendo, e custo desconhecido fica vazio.
+Reservas persistem após reinício. Lease expirado pode ser retomado; resposta atrasada não
+publica resultados. Erros são registrados por código, sem respostas ou mensagens privadas
+do fornecedor. Esta opção permanece desativada até ser configurada explicitamente.
 
 ## Configuração
 

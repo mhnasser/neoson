@@ -64,7 +64,7 @@ genérico de estado. A aprovação futura usa o registro versionado, preserva ro
 não publica código nem faz commit automaticamente. Custo desconhecido não é custo zero;
 regressões por caso e aumento de custo/latência precisam ficar visíveis na revisão.
 
-### Trabalho assíncrono (próximo incremento)
+### Trabalho assíncrono
 
 O handler da outbox apenas agenda um job idempotente com a evidência de origem. Um executor
 reivindica o job em transação curta, libera a conexão e chama o modelo com orçamento,
@@ -75,7 +75,26 @@ ou aguardar a curadoria no caminho da resposta ao usuário.
 Jobs têm lease, retry e estado próprios; seus eventos e execuções de fixtures não alimentam
 recursivamente a curadoria. Observações são dados não confiáveis, e nenhuma instrução nelas
 autoriza publicar uma skill. Geração, comparação, CLI de revisão e visualização de propostas
-são incrementos seguintes, não funcionalidades já disponíveis neste armazenamento.
+são etapas separadas. O agendamento e a geração estão disponíveis no executor opcional
+`neoson-curator`; comparação, CLI de revisão e visualização de propostas são incrementos
+seguintes.
+
+`curation_jobs` guarda a referência à fonte e à base, tentativas, retry, lease e claim UUID.
+`curation_attempts` reserva orçamento antes de cada chamada e guarda só métricas/códigos.
+Só falhas de runs com skill aprovada (fora de canais de avaliação/curadoria) e avaliações
+reprovadas da mesma versão/checksum são elegíveis. Há um job ativo por skill e teto diário;
+sinais excedentes não são acumulados indefinidamente. O contexto não inclui transcrições.
+
+O executor solicita somente JSON com `instructions`; versão e demais arquivos são montados
+localmente e passam pelo contrato de propostas. A proposta e a conclusão do job são gravadas
+na mesma transação, após conferir claim e validade do lease. A base ativa é revalidada nessa
+transação. Cancelamento deixa lease/reserva persistidos para recuperação, sem publicar
+resultado atrasado. SDK não faz retries ocultos nesse executor.
+
+Limites configuráveis cobrem caracteres de entrada, tokens de saída, tempo, tentativas,
+jobs e reserva diária de tokens. Teto USD opcional exige preços conhecidos; reservas
+monetárias persistem e valores desconhecidos não viram zero. São custos estimados com os
+preços configurados. Toda falha de provedor usa código genérico sem expor sua mensagem.
 
 ## Alternativas consideradas
 

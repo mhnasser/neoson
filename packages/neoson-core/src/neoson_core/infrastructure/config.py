@@ -85,6 +85,15 @@ class ServerSettings(BaseSettings):
     worker_lease_seconds: PositiveFloat = 60.0
     worker_max_attempts: PositiveInt = 5
 
+    curation_enabled: bool = False
+    curation_timeout_seconds: PositiveFloat = 30
+    curation_max_attempts: PositiveInt = 3
+    curation_max_daily_jobs: PositiveInt = 5
+    curation_max_daily_tokens: PositiveInt = 60000
+    curation_max_input_chars: PositiveInt = 12000
+    curation_max_output_tokens: PositiveInt = 3000
+    curation_max_daily_cost_usd: PositiveFloat | None = None
+
     gateway_host: str = "127.0.0.1"
     gateway_port: int = Field(default=8000, ge=1, le=65535)
 

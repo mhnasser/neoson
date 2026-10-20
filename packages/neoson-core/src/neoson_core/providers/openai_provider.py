@@ -48,9 +48,12 @@ class OpenAIProvider:
         models: Mapping[str, str],
         timeout_seconds: float,
         reasoning_effort: str | None = None,
+        max_retries: int = 2,
     ) -> "OpenAIProvider":
         """Cria o cliente do SDK aqui, para que só `providers` conheça o fornecedor."""
-        client = AsyncOpenAI(api_key=api_key, timeout=timeout_seconds)
+        client = AsyncOpenAI(
+            api_key=api_key, timeout=timeout_seconds, max_retries=max_retries
+        )
         return cls(client, models, reasoning_effort)
 
     async def complete(self, request: LLMRequest) -> LLMResponse:

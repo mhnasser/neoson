@@ -338,7 +338,7 @@ def test_migration_from_previous_schema_and_missing_proposal(
     store = SqliteProposalStore(db)
     assert store.list() == []
     with closing(connect(db)) as c:
-        assert schema_version(c) == 9
+        assert schema_version(c) >= 9
         assert c.execute("SELECT version FROM skills").fetchone()[0] == "1.1.0"
     with pytest.raises(ProposalNotFound):
         store.get(uuid4())

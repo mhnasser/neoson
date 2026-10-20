@@ -3,7 +3,7 @@
 import json
 import sqlite3
 from collections.abc import Sequence
-from contextlib import closing
+from contextlib import closing, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -80,6 +80,7 @@ class SqliteProposalStore:
         base_checksum: str,
         request_id: UUID,
         sources: Sequence[ProposalSource],
+        _connection: sqlite3.Connection | None = None,
     ) -> Proposal:
         snapshot = package_from_texts(candidate.path, candidate.contents)
         if (
@@ -93,7 +94,16 @@ class SqliteProposalStore:
         if not references or len(references) > MAX_SOURCES:
             raise ProposalInvalid(f"Proposta exige entre 1 e {MAX_SOURCES} fontes.")
         skill_id = snapshot.metadata.id
-        with closing(connect(self._path)) as connection, transaction(connection):
+        if _connection is not None and not _connection.in_transaction:
+            raise ValueError("A conexão externa exige uma transação ativa.")
+        with (
+            (
+                closing(connect(self._path))
+                if _connection is None
+                else nullcontext(_connection)
+            ) as connection,
+            transaction(connection) if _connection is None else nullcontext(connection),
+        ):
             existing = connection.execute(
                 "SELECT * FROM skill_proposals WHERE request_id = ?", (str(request_id),)
             ).fetchone()
