@@ -110,6 +110,11 @@ class SqliteSkillRegistry:
             ).fetchall()
         return [_version(row) for row in rows]
 
+    def approved_package(self, skill_id: str) -> SkillPackage:
+        """Snapshot integral ativo, incluindo as fixtures, validado pelo checksum."""
+        with self._connection() as connection:
+            return _package(_active(connection, skill_id))
+
     def rollback(self, skill_id: str) -> SkillVersion:
         """Volta à aprovação anterior à ativa, sem apagar ou editar versões."""
         with self._connection() as connection, transaction(connection):

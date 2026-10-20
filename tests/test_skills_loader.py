@@ -212,7 +212,7 @@ def test_command_line_validates_the_library(
 
     assert main(["validate"]) == 0
     out = capsys.readouterr().out
-    assert "ok   planejar_dia 1.0.0" in out and "ok   retomar_assunto 1.0.0" in out
+    assert "ok   planejar_dia 1.1.0" in out and "ok   retomar_assunto 1.1.0" in out
 
 
 def test_command_line_reports_problems_and_fails(

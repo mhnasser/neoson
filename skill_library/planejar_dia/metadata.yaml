@@ -1,5 +1,5 @@
 id: planejar_dia
-version: 1.0.0
+version: 1.1.0
 description: Monta o plano de um dia a partir da agenda do usuário e das preferências guardadas na memória.
 triggers:
   - planejar o dia

@@ -1,5 +1,5 @@
 id: retomar_assunto
-version: 1.0.0
+version: 1.1.0
 description: Recupera o que já foi conversado ou decidido sobre um assunto, citando a data de cada fonte.
 triggers:
   - o que decidimos

@@ -59,6 +59,17 @@ do resultado de uma ferramenta. A partir daí:
 resultado) na mesma transação do run. As avaliações com fixtures registram casos aprovados,
 tokens, custo e latência por versão (§8.1).
 
+As fixtures de referência são YAML em `tests/fixtures/`, incluídas no checksum e na cópia
+aprovada. Cada arquivo declara `id`, `input`, `now` com fuso, `tools` (resumo, dados, estado
+e argumentos exatos opcionais) e `expect` (estado, ferramentas obrigatórias/proibidas e
+textos obrigatórios/proibidos). A avaliação usa o modelo configurado e os schemas/riscos
+das ferramentas, com as respostas da fixture. Nenhuma implementação real de ferramenta
+é executada; cada caso usa um banco temporário com apenas a skill avaliada.
+
+`skill_evaluations` guarda versão/checksum, métricas e motivos objetivos, sem transcrições
+ou conteúdo das respostas. A gravação gera `neoson.skill.evaluated` na mesma transação.
+O custo só é conhecido se houver preço configurado para todos os modelos envolvidos.
+
 ## Implicações
 
 - Novo adaptador `neoson_core.skills`, independente dos outros adaptadores (ADR-006). A porta

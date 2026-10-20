@@ -33,6 +33,7 @@ from neoson_core.tools.calendar_fake import CalendarEvent, FakeCalendar
 from neoson_core.tools.memory_facts import MemoryForget, MemorySave
 from neoson_core.tools.memory_search import MemorySearch
 from neoson_core.tools.registry import ToolRegistry
+from neoson_gateway.skills_eval import evaluate_skill
 
 pytestmark = [
     pytest.mark.live,
@@ -251,3 +252,38 @@ def test_live_agent_loads_approved_skill_and_uses_calendar(tmp_path: Path) -> No
         connection.close()
     assert tuple(execution) == ("planejar_dia", "completed")
     assert any('"name": "calendar_list"' in row[0] for row in calls)
+
+
+@pytest.mark.parametrize("skill_id", ["planejar_dia", "retomar_assunto"])
+def test_live_skill_evaluation_records_reference_cases(
+    tmp_path: Path, skill_id: str
+) -> None:
+    settings = load_settings()
+    if settings.openai_api_key is None or settings.llm_model is None:
+        pytest.skip("OPENAI_API_KEY ou NEOSON_LLM_MODEL não configurados")
+    settings = settings.model_copy(
+        update={
+            "db_path": tmp_path / "eval.db",
+            "max_agent_steps": 6,
+            "run_timeout_seconds": 60,
+        }
+    )
+    library = Path(__file__).resolve().parents[1] / "skill_library"
+    SqliteSkillRegistry(settings.db_path).approve(load_skill(library / skill_id))
+    report = asyncio.run(evaluate_skill(settings, skill_id))
+    assert report.passed_cases == len(report.cases), [
+        (case.id, case.reasons) for case in report.cases
+    ]
+    assert report.usage.input_tokens > 0
+    connection = connect(settings.db_path)
+    try:
+        row = connection.execute(
+            "SELECT skill_id, total_cases, passed_cases FROM skill_evaluations"
+        ).fetchone()
+        conversations = connection.execute("SELECT COUNT(*) FROM messages").fetchone()[
+            0
+        ]
+    finally:
+        connection.close()
+    assert tuple(row) == (skill_id, 2, 2)
+    assert conversations == 0

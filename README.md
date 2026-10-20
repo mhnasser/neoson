@@ -135,6 +135,7 @@ uv run --package neoson-gateway neoson-skills approve <pasta>     # aprova e ati
 uv run --package neoson-gateway neoson-skills list                # versões e estados
 uv run --package neoson-gateway neoson-skills rollback <id>       # aprovação anterior
 uv run --package neoson-gateway neoson-skills retire <id>         # retira a versão ativa
+uv run --package neoson-gateway neoson-skills eval <id>           # avalia a versão aprovada
 ```
 
 Validar não aprova. A aprovação explícita guarda no SQLite a cópia integral da skill e seu
@@ -148,6 +149,14 @@ O procedimento aprovado entra como instrução apenas na execução atual. Depoi
 só as ferramentas declaradas pela skill ficam disponíveis; a política de segurança continua
 valendo, e `requires_approval` exige aprovação também das leituras. Cada execução registra a
 skill e sua versão na mesma transação da conversa e do evento de conclusão.
+
+As fixtures YAML em `tests/fixtures/` definem a entrada, o relógio, respostas simuladas de
+ferramentas e critérios objetivos. `eval` usa as fixtures do snapshot aprovado, o provedor
+configurado e um banco temporário por caso. As ferramentas reais fornecem seus schemas e
+riscos, mas sua implementação não é executada. Só as medições ficam no banco configurado:
+casos aprovados/reprovados, motivos, tokens, modelo, latência e custo estimado. Sem preços
+configurados, o custo fica desconhecido. Saída 0 quando todos os casos passam e 1 se algum
+falhar. Avaliar não aprova nem altera a versão ativa.
 
 O formato e a governança estão no [ADR-007](docs/decisions/ADR-007-Skills.md).
 

@@ -1,0 +1,12 @@
+id: sem_agenda
+input: Planeje meu dia 2026-10-22. Se não houver compromissos, diga que a agenda está vazia.
+now: "2026-10-20T09:00:00-03:00"
+tools:
+  calendar_list:
+    arguments: {day: "2026-10-22"}
+    summary: Nenhum compromisso em 2026-10-22.
+expect:
+  required_tools: [calendar_list]
+  forbidden_tools: [memory_save, memory_forget]
+  contains: [vazia]
+  not_contains: [dentista, "Reunião de planejamento"]

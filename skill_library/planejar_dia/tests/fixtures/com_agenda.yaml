@@ -1,0 +1,13 @@
+id: com_agenda
+input: Planeje meu dia 2026-10-21 com os compromissos e os intervalos livres.
+now: "2026-10-20T09:00:00-03:00"
+tools:
+  calendar_list:
+    arguments: {day: "2026-10-21"}
+    summary: "Compromissos em 2026-10-21: 09:00 Reunião de planejamento (60 min); 14:30 Revisão do projeto (45 min)."
+expect:
+  state: completed
+  required_tools: [calendar_list]
+  forbidden_tools: [memory_save, memory_forget]
+  contains: ["09:00", "14:30", "planejamento", "Revisão"]
+  not_contains: [dentista]

@@ -10,6 +10,7 @@ from neoson_core.engine import (
     CuratedMemory,
     EchoEngine,
     Engine,
+    LLMProvider,
     PolicyEngine,
 )
 from neoson_core.infrastructure.config import ConfigError, ServerSettings
@@ -36,23 +37,7 @@ TOOL_NAMES = (
 def build_engine(settings: ServerSettings) -> Engine:
     if settings.llm_provider == "echo":
         return EchoEngine()
-
-    if settings.openai_api_key is None:
-        raise ConfigError(
-            "OPENAI_API_KEY é obrigatória com NEOSON_LLM_PROVIDER=openai "
-            "(use NEOSON_LLM_PROVIDER=echo para desenvolver sem chave)."
-        )
-    if not settings.llm_model:
-        raise ConfigError(
-            "NEOSON_LLM_MODEL é obrigatório com NEOSON_LLM_PROVIDER=openai."
-        )
-
-    provider = OpenAIProvider.from_api_key(
-        api_key=settings.openai_api_key.get_secret_value(),
-        models={settings.primary_model_profile: settings.llm_model},
-        timeout_seconds=settings.run_timeout_seconds,
-        reasoning_effort=settings.llm_reasoning_effort,
-    )
+    provider = build_provider(settings)
     zone = ZoneInfo(settings.timezone)
     memory = SqliteCuratedMemory(settings.db_path)
 
@@ -74,6 +59,26 @@ def build_engine(settings: ServerSettings) -> Engine:
         memory=memory,
         memory_max_facts=settings.memory_max_facts,
         skills=SqliteSkillRegistry(settings.db_path),
+    )
+
+
+def build_provider(settings: ServerSettings) -> LLMProvider:
+    if settings.llm_provider != "openai":
+        raise ConfigError("A avaliação de skills exige NEOSON_LLM_PROVIDER=openai.")
+    if settings.openai_api_key is None:
+        raise ConfigError(
+            "OPENAI_API_KEY é obrigatória com NEOSON_LLM_PROVIDER=openai "
+            "(use NEOSON_LLM_PROVIDER=echo para desenvolver sem chave)."
+        )
+    if not settings.llm_model:
+        raise ConfigError(
+            "NEOSON_LLM_MODEL é obrigatório com NEOSON_LLM_PROVIDER=openai."
+        )
+    return OpenAIProvider.from_api_key(
+        api_key=settings.openai_api_key.get_secret_value(),
+        models={settings.primary_model_profile: settings.llm_model},
+        timeout_seconds=settings.run_timeout_seconds,
+        reasoning_effort=settings.llm_reasoning_effort,
     )
 
 

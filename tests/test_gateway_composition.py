@@ -58,7 +58,7 @@ def test_gateway_connects_approved_skills_to_the_engine(
     SqliteSkillRegistry(settings.db_path).approve(load_skill(source))
     provider = ScriptedProvider(
         [
-            call_tool("skill_load", {"skill_id": "planejar_dia", "version": "1.0.0"}),
+            call_tool("skill_load", {"skill_id": "planejar_dia", "version": "1.1.0"}),
             reply("Plano pronto."),
         ]
     )

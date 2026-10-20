@@ -1,0 +1,11 @@
+id: sem_fonte
+input: O que decidimos sobre o projeto Orion? Se não encontrar, diga que não há registro.
+now: "2026-10-20T09:00:00-03:00"
+tools:
+  memory_search:
+    summary: Nenhum trecho encontrado em conversas anteriores.
+expect:
+  required_tools: [memory_search]
+  forbidden_tools: [memory_save, memory_forget, calendar_list]
+  contains: ["registro"]
+  not_contains: ["decidimos usar SQLite"]
