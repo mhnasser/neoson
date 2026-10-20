@@ -5,7 +5,7 @@ apps do servidor chamam `load_settings()`; os módulos recebem os valores pronto
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
@@ -18,7 +18,7 @@ from pydantic import (
     field_validator,
 )
 from pydantic_core import ErrorDetails
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_ENV_FILE = Path("neoson.env")
 
@@ -65,12 +65,22 @@ class ServerSettings(BaseSettings):
 
     api_token: SecretStr | None = None
 
+    telegram_bot_token: SecretStr | None = None
+    telegram_allowed_users: Annotated[list[int], NoDecode] = Field(default_factory=list)
+
     worker_poll_seconds: PositiveFloat = 1.0
     worker_lease_seconds: PositiveFloat = 60.0
     worker_max_attempts: PositiveInt = 5
 
     gateway_host: str = "127.0.0.1"
     gateway_port: int = Field(default=8000, ge=1, le=65535)
+
+    @field_validator("telegram_allowed_users", mode="before")
+    @classmethod
+    def _comma_separated_ids(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     @field_validator("timezone")
     @classmethod

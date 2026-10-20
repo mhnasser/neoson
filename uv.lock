@@ -359,6 +359,7 @@ version = "0.1.0"
 source = { editable = "apps/gateway" }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx2" },
     { name = "neoson-contracts" },
     { name = "neoson-core" },
     { name = "uvicorn" },
@@ -367,6 +368,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.148.0" },
+    { name = "httpx2", specifier = ">=2.14.0" },
     { name = "neoson-contracts", editable = "packages/neoson-contracts" },
     { name = "neoson-core", editable = "packages/neoson-core" },
     { name = "uvicorn", specifier = ">=0.54.0" },

@@ -35,6 +35,7 @@ hardlinks nelas.
 ```bash
 uv run --package neoson-gateway neoson-gateway   # padrão: http://127.0.0.1:8000 (NEOSON_GATEWAY_*)
 uv run --package neoson-worker neoson-worker    # consome a outbox (--once: processa e sai)
+uv run --package neoson-gateway neoson-telegram # canal Telegram (long polling)
 uv run --package neoson-robot neoson-robot "Olá, NeoSon"   # envia uma mensagem e mostra a resposta
 ```
 
@@ -50,6 +51,11 @@ cliente HTTP, sem nada do servidor; para instalar apenas ele:
 ```bash
 uv sync --package neoson-robot --no-dev
 ```
+
+O `neoson-telegram` conversa pelo Telegram com o mesmo motor e o mesmo banco do gateway. Ele só
+responde em chat privado a usuários listados em `NEOSON_TELEGRAM_ALLOWED_USERS` (IDs numéricos)
+e precisa de `NEOSON_TELEGRAM_BOT_TOKEN` (criado no @BotFather). Cada chat tem a sua sessão;
+`/nova` começa outra conversa.
 
 O gateway exige `NEOSON_API_TOKEN`, e o robô envia o mesmo token (`Authorization: Bearer`). Para
 continuar uma conversa, use `--show-session` e depois `--session-id <id>`.
