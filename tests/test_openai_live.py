@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from datetime import date, time
 
 import pytest
 from openai import AsyncOpenAI
@@ -19,6 +20,8 @@ from neoson_core.engine import (
 from neoson_core.infrastructure.config import load_settings
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.rules import RulesRouter
+from neoson_core.tools.calendar_fake import CalendarEvent, FakeCalendar
+from neoson_core.tools.registry import ToolRegistry
 
 pytestmark = [
     pytest.mark.live,
@@ -100,3 +103,23 @@ def test_live_agent_loop_answers_through_the_model() -> None:
     assert result.status is RunStatus.COMPLETED
     assert "5" in result.text
     assert result.usage.input_tokens > 0
+
+
+def test_live_agent_uses_the_calendar_tool() -> None:
+    calendar = FakeCalendar.fixed(
+        {date(2026, 10, 21): (CalendarEvent(time(15, 0), "Consulta no dentista", 60),)}
+    )
+    agent = AgentLoop(
+        provider=live_provider(),
+        router=RulesRouter("balanced"),
+        budget=Budget(max_steps=4, timeout_seconds=90),
+        tools=ToolRegistry([calendar]),
+    )
+
+    result = asyncio.run(
+        agent.run(UserMessage(text="Quais são meus compromissos em 2026-10-21?"))
+    )
+
+    assert result.status is RunStatus.COMPLETED
+    assert "dentista" in result.text.lower()
+    assert "15" in result.text

@@ -64,10 +64,11 @@ def test_direct_reply_completes_with_usage_and_model() -> None:
     ]
     (sent,) = provider.requests
     assert sent.model_profile == "balanced"
-    assert [(m.role, m.content) for m in sent.messages] == [
-        (Role.SYSTEM, SYSTEM_PROMPT),
-        (Role.USER, "Olá"),
-    ]
+    system, user = sent.messages
+    assert system.role is Role.SYSTEM
+    assert system.content.startswith(SYSTEM_PROMPT)
+    assert "Hoje é " in system.content
+    assert (user.role, user.content) == (Role.USER, "Olá")
 
 
 def test_tool_request_gets_an_unavailable_result_and_the_loop_continues() -> None:

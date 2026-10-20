@@ -6,6 +6,7 @@ apps do servidor chamam `load_settings()`; os módulos recebem os valores pronto
 
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     Field,
@@ -53,13 +54,25 @@ class ServerSettings(BaseSettings):
     max_agent_steps: PositiveInt = 12
     run_timeout_seconds: PositiveFloat = 120.0
     max_subagents: NonNegativeInt = 2
-    approval_mode: str = "required_for_sensitive"
+    approval_mode: Literal["required_for_sensitive", "always"] = (
+        "required_for_sensitive"
+    )
+    timezone: str = "America/Sao_Paulo"
 
     memory_graph_enabled: bool = False
     metrics_export_enabled: bool = True
 
     gateway_host: str = "127.0.0.1"
     gateway_port: int = Field(default=8000, ge=1, le=65535)
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("fuso horário IANA desconhecido") from None
+        return value
 
     @field_validator("log_level", mode="before")
     @classmethod

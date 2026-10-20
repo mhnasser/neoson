@@ -6,8 +6,9 @@ as decisões de arquitetura, em [`docs/decisions/`](docs/decisions/).
 
 > **Estado:** fundação pronta (workspace, configuração, CI) e primeira versão do motor. O cliente
 > `neoson-robot` envia mensagens ao gateway em `POST /api/v1/messages`, e o Agent Loop responde
-> pelo modelo configurado (OpenAI), com roteador por regras e limites de passos, tempo e tokens.
-> Ferramentas, persistência da conversa, autenticação e worker ainda estão em construção.
+> pelo modelo configurado (OpenAI), com roteador por regras, limites de passos, tempo e tokens, e
+> ferramentas autorizadas por uma Policy Engine (por enquanto, uma agenda de demonstração).
+> Persistência da conversa, autenticação e worker ainda estão em construção.
 
 ## Requisitos
 
@@ -52,7 +53,10 @@ responder ou responder fora do contrato; 2 para mensagem, opção ou URL inváli
 | `GET /api/v1/health/live` | Indica que o processo está ativo |
 | `POST /api/v1/messages` | Recebe `{"text": "..."}` (e `session_id` opcional) e devolve a resposta do NeoSon |
 
-A resposta vem do Agent Loop, pelo modelo configurado em `NEOSON_LLM_MODEL`. Para desenvolver sem
+A resposta vem do Agent Loop, pelo modelo configurado em `NEOSON_LLM_MODEL`. O modelo pode usar
+ferramentas registradas; cada pedido é validado e passa pela Policy Engine, e ações sensíveis
+suspendem a execução com `needs_approval` ([ADR-003](docs/decisions/ADR-003-Seguranca-Tools.md)).
+Hoje há só `calendar_list`, com uma agenda fake de demonstração. Para desenvolver sem
 chave da OpenAI, use `NEOSON_LLM_PROVIDER=echo`: o motor devolve o próprio texto recebido. Os
 schemas ficam em
 `neoson-contracts` ([ADR-005](docs/decisions/ADR-005-API-Contracts.md)). Toda resposta fora de 2xx

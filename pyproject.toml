@@ -60,7 +60,10 @@ source_modules = ["neoson_core.engine"]
 forbidden_modules = [
     "neoson_contracts",
     "neoson_core.infrastructure",
+    "neoson_core.memory",
     "neoson_core.providers",
+    "neoson_core.routing",
+    "neoson_core.tools",
 ]
 
 [[tool.importlinter.contracts]]
@@ -80,7 +83,12 @@ allow_indirect_imports = true
 [[tool.importlinter.contracts]]
 name = "Adaptadores independentes entre si"
 type = "independence"
-modules = ["neoson_core.providers", "neoson_core.routing", "neoson_core.memory"]
+modules = [
+    "neoson_core.providers",
+    "neoson_core.routing",
+    "neoson_core.memory",
+    "neoson_core.tools",
+]
 
 [[tool.importlinter.contracts]]
 name = "Infraestrutura não depende de adaptadores"
@@ -90,6 +98,7 @@ forbidden_modules = [
     "neoson_core.memory",
     "neoson_core.providers",
     "neoson_core.routing",
+    "neoson_core.tools",
 ]
 
 [dependency-groups]

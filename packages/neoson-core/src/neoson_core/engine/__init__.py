@@ -39,6 +39,14 @@ from neoson_core.engine.run import (
     allowed_transitions,
     transition,
 )
+from neoson_core.engine.tools import (
+    PolicyEngine,
+    RiskLevel,
+    ToolCatalog,
+    ToolContext,
+    ToolRejected,
+    Verdict,
+)
 
 __all__ = [
     "AgentLoop",
@@ -55,6 +63,8 @@ __all__ = [
     "LLMResponse",
     "Message",
     "OutboxEvent",
+    "PolicyEngine",
+    "RiskLevel",
     "Role",
     "RouteDecision",
     "RouteRequest",
@@ -66,11 +76,15 @@ __all__ = [
     "RunStatus",
     "SessionNotFound",
     "ToolCall",
+    "ToolCatalog",
+    "ToolContext",
+    "ToolRejected",
     "ToolResult",
     "ToolResultStatus",
     "ToolSpec",
     "Usage",
     "UserMessage",
+    "Verdict",
     "allowed_transitions",
     "transition",
 ]

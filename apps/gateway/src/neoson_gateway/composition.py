@@ -1,9 +1,14 @@
 """Montagem do motor a partir da configuração (composition root do gateway)."""
 
-from neoson_core.engine import AgentLoop, Budget, EchoEngine, Engine
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from neoson_core.engine import AgentLoop, Budget, EchoEngine, Engine, PolicyEngine
 from neoson_core.infrastructure.config import ConfigError, ServerSettings
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.rules import RulesRouter
+from neoson_core.tools.calendar_fake import FakeCalendar
+from neoson_core.tools.registry import ToolRegistry
 
 
 def build_engine(settings: ServerSettings) -> Engine:
@@ -26,6 +31,11 @@ def build_engine(settings: ServerSettings) -> Engine:
         timeout_seconds=settings.run_timeout_seconds,
         reasoning_effort=settings.llm_reasoning_effort,
     )
+    zone = ZoneInfo(settings.timezone)
+
+    def clock() -> datetime:
+        return datetime.now(zone)
+
     return AgentLoop(
         provider=provider,
         router=RulesRouter(settings.primary_model_profile),
@@ -33,4 +43,7 @@ def build_engine(settings: ServerSettings) -> Engine:
             max_steps=settings.max_agent_steps,
             timeout_seconds=settings.run_timeout_seconds,
         ),
+        tools=ToolRegistry([FakeCalendar.demo(clock)]),
+        policy=PolicyEngine(settings.approval_mode),
+        clock=clock,
     )
