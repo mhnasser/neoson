@@ -1,6 +1,7 @@
 """Motor do NeoSon: tipos de domínio e portas. Só depende da biblioteca padrão."""
 
 from neoson_core.engine.conversation import Engine, RunResult, RunStatus, UserMessage
+from neoson_core.engine.curated import CuratedMemory, MemoryFact
 from neoson_core.engine.echo import EchoEngine
 from neoson_core.engine.llm import (
     LLMError,
@@ -54,6 +55,7 @@ __all__ = [
     "Budget",
     "Complexity",
     "ConversationStore",
+    "CuratedMemory",
     "EchoEngine",
     "Engine",
     "ExecutionMode",
@@ -64,6 +66,7 @@ __all__ = [
     "LLMProvider",
     "LLMRequest",
     "LLMResponse",
+    "MemoryFact",
     "Message",
     "OutboxEvent",
     "PolicyEngine",

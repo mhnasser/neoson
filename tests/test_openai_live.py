@@ -21,11 +21,13 @@ from neoson_core.engine import (
     UserMessage,
 )
 from neoson_core.infrastructure.config import load_settings
+from neoson_core.memory.curated import SqliteCuratedMemory
 from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.rules import RulesRouter
 from neoson_core.tools.calendar_fake import CalendarEvent, FakeCalendar
+from neoson_core.tools.memory_facts import MemoryForget, MemorySave
 from neoson_core.tools.memory_search import MemorySearch
 from neoson_core.tools.registry import ToolRegistry
 
@@ -170,3 +172,32 @@ def test_live_agent_recalls_a_decision_from_another_session(tmp_path: Path) -> N
     assert result.status is RunStatus.COMPLETED
     assert "atlas" in result.text.lower()
     assert "18" in result.text or "2026-10-18" in result.text
+
+
+def test_live_preference_is_remembered_in_another_session(tmp_path: Path) -> None:
+    db = tmp_path / "neoson.db"
+    memory = SqliteCuratedMemory(db)
+
+    def agent() -> AgentLoop:
+        return AgentLoop(
+            provider=live_provider(),
+            router=RulesRouter("balanced"),
+            budget=Budget(max_steps=4, timeout_seconds=90),
+            tools=ToolRegistry([MemorySave(memory), MemoryForget(memory)]),
+            store=SqliteConversationStore(db),
+            memory=memory,
+        )
+
+    first = asyncio.run(
+        agent().run(
+            UserMessage(
+                text="Por favor, lembre para sempre: meu time do coração é o Vasco."
+            )
+        )
+    )
+    second = asyncio.run(agent().run(UserMessage(text="Qual é o meu time do coração?")))
+
+    assert first.status is RunStatus.COMPLETED
+    assert [f.content for f in asyncio.run(memory.active(10))]
+    assert second.session_id != first.session_id
+    assert "vasco" in second.text.lower()

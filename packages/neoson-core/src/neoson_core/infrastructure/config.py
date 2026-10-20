@@ -63,6 +63,7 @@ class ServerSettings(BaseSettings):
     router_policy: str = "rules-v1"
     max_agent_steps: PositiveInt = 12
     history_max_messages: PositiveInt = 40
+    memory_max_facts: PositiveInt = 30
     run_timeout_seconds: PositiveFloat = 120.0
     max_subagents: NonNegativeInt = 2
     approval_mode: Literal["required_for_sensitive", "always"] = (

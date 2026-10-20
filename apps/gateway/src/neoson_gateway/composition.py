@@ -5,11 +5,13 @@ from zoneinfo import ZoneInfo
 
 from neoson_core.engine import AgentLoop, Budget, EchoEngine, Engine, PolicyEngine
 from neoson_core.infrastructure.config import ConfigError, ServerSettings
+from neoson_core.memory.curated import SqliteCuratedMemory
 from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.rules import RulesRouter
 from neoson_core.tools.calendar_fake import FakeCalendar
+from neoson_core.tools.memory_facts import MemoryForget, MemorySave
 from neoson_core.tools.memory_search import MemorySearch
 from neoson_core.tools.registry import ToolRegistry
 
@@ -35,6 +37,7 @@ def build_engine(settings: ServerSettings) -> Engine:
         reasoning_effort=settings.llm_reasoning_effort,
     )
     zone = ZoneInfo(settings.timezone)
+    memory = SqliteCuratedMemory(settings.db_path)
 
     def clock() -> datetime:
         return datetime.now(zone)
@@ -50,12 +53,16 @@ def build_engine(settings: ServerSettings) -> Engine:
             [
                 FakeCalendar.demo(clock),
                 MemorySearch(SqliteHistorySearch(settings.db_path), zone),
+                MemorySave(memory),
+                MemoryForget(memory),
             ]
         ),
         policy=PolicyEngine(settings.approval_mode),
         clock=clock,
         store=SqliteConversationStore(settings.db_path),
         history_max_messages=settings.history_max_messages,
+        memory=memory,
+        memory_max_facts=settings.memory_max_facts,
     )
 
 

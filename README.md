@@ -86,9 +86,17 @@ responder ou responder fora do contrato; 2 para mensagem, opção ou URL inváli
 A resposta vem do Agent Loop, pelo modelo configurado em `NEOSON_LLM_MODEL`. O modelo pode usar
 ferramentas registradas; cada pedido é validado e passa pela Policy Engine, e ações sensíveis
 suspendem a execução com `needs_approval` ([ADR-003](docs/decisions/ADR-003-Seguranca-Tools.md)).
-Ferramentas disponíveis: `calendar_list` (agenda fake de demonstração) e `memory_search`, que
-busca em conversas anteriores (índice FTS5 no SQLite, sem diferenciar acentos) e devolve trechos
-com data e autor, para o modelo citar a fonte. Para desenvolver sem
+Ferramentas disponíveis:
+
+- `calendar_list`: agenda fake de demonstração.
+- `memory_search`: busca em conversas anteriores (índice FTS5 no SQLite, sem diferenciar acentos)
+  e devolve trechos com data e autor, para o modelo citar a fonte.
+- `memory_save` e `memory_forget`: memória curada. Guardam fatos e preferências que o usuário pediu
+  para lembrar, com a origem (sessão e data). Os fatos ativos entram no prompt de sistema, marcados
+  como dados, e aparecem no vault em `Memoria/Usuario/` e `Memoria/NeoSon/` para revisão. Para
+  corrigir, peça ao NeoSon que esqueça o fato pelo número.
+
+Para desenvolver sem
 chave da OpenAI, use `NEOSON_LLM_PROVIDER=echo`: o motor devolve o próprio texto recebido. Os
 schemas ficam em
 `neoson-contracts` ([ADR-005](docs/decisions/ADR-005-API-Contracts.md)). Toda resposta fora de 2xx

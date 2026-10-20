@@ -53,6 +53,9 @@ estruturados ficam no resultado.
 
 - Cada ferramenta nova declara nome, descrição, modelo de argumentos e nível de risco; sem nível
   de risco, ela não entra no registro.
+- Escrever na memória curada do próprio NeoSon (`memory_save`, `memory_forget`) é escrita dentro
+  da área autorizada: entra como `read`. Os fatos ficam visíveis no vault para revisão, podem ser
+  esquecidos, e a ferramenta só deve salvar o que o usuário pediu explicitamente.
 - O fluxo HTTP para conceder aprovações fica para uma tarefa futura; a Policy Engine já aceita
   aprovações concedidas.
 - Ferramentas de escrita com efeito externo também precisam de chave de idempotência no worker

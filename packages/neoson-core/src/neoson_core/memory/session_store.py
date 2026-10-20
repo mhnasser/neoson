@@ -9,7 +9,8 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from neoson_core.engine import Message, Role, ToolCall
-from neoson_core.engine.persistence import OutboxEvent, RunRecord, SessionNotFound
+from neoson_core.engine.persistence import RunRecord, SessionNotFound
+from neoson_core.infrastructure import outbox
 from neoson_core.infrastructure.db import connect, migrate, now_iso, transaction
 
 
@@ -125,7 +126,7 @@ class SqliteConversationStore:
                     ),
                 )
             for event in record.events:
-                _insert_event(connection, event)
+                outbox.insert(connection, event)
             connection.execute(
                 "UPDATE sessions SET updated_at = ? WHERE id = ?",
                 (record.ended_at.isoformat(), str(record.session_id)),
@@ -137,23 +138,6 @@ def _exists(connection: sqlite3.Connection, session_id: UUID) -> bool:
         "SELECT 1 FROM sessions WHERE id = ?", (str(session_id),)
     ).fetchone()
     return row is not None
-
-
-def _insert_event(connection: sqlite3.Connection, event: OutboxEvent) -> None:
-    connection.execute(
-        "INSERT INTO outbox_events (id, type, schema_version, occurred_at, run_id,"
-        " session_id, correlation_id, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            str(event.event_id),
-            event.type,
-            event.schema_version,
-            event.occurred_at.isoformat(),
-            _text(event.run_id),
-            _text(event.session_id),
-            _text(event.correlation_id),
-            json.dumps(dict(event.payload), ensure_ascii=False),
-        ),
-    )
 
 
 def _tool_calls_json(message: Message) -> str | None:
@@ -179,7 +163,3 @@ def _message(row: sqlite3.Row) -> Message:
         tool_calls=calls,
         tool_call_id=row["tool_call_id"],
     )
-
-
-def _text(value: UUID | None) -> str | None:
-    return None if value is None else str(value)

@@ -24,6 +24,24 @@ def iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat(timespec="microseconds")
 
 
+def insert(connection: sqlite3.Connection, event: OutboxEvent) -> None:
+    """Grava um evento pendente; use na mesma transação da mudança que o gerou."""
+    connection.execute(
+        "INSERT INTO outbox_events (id, type, schema_version, occurred_at, run_id,"
+        " session_id, correlation_id, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            str(event.event_id),
+            event.type,
+            event.schema_version,
+            event.occurred_at.isoformat(),
+            _text(event.run_id),
+            _text(event.session_id),
+            _text(event.correlation_id),
+            json.dumps(dict(event.payload), ensure_ascii=False),
+        ),
+    )
+
+
 def lease(
     connection: sqlite3.Connection,
     worker_id: str,
@@ -126,3 +144,7 @@ def _leased(connection: sqlite3.Connection, event_id: str) -> LeasedEvent:
 
 def _uuid(value: str | None) -> UUID | None:
     return None if value is None else UUID(value)
+
+
+def _text(value: UUID | None) -> str | None:
+    return None if value is None else str(value)
