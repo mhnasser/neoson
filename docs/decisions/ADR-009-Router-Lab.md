@@ -77,7 +77,7 @@ separadamente; carregar o dataset não executa nenhuma ferramenta ou API.
   positivo, cobertura completa e condições comparáveis. Mostrar qualidade junto ao custo;
   não extrapolar métricas de mocks para preços, cache ou qualidade em produção.
 
-### Promoção futura
+### Promoção explícita
 
 A avaliação gera evidência, não ativa uma política. A promoção exigirá revisão explícita,
 snapshot versionado e comparação íntegra no split de teste, com dataset, política e
@@ -107,6 +107,24 @@ declaradas no plano, independentemente dos labels; retries sem consumo informado
 viram custo zero. O modo simulado não autoriza estimativa de economia. Procedimento e
 limites no [runbook](../runbooks/router-lab.md).
 
-Não há registro de políticas, dashboard ou mecanismo de promoção nesta etapa. O executor
-não altera `RulesRouter`, contrato `Router` ou a configuração de produção. A divisão
-permite medir as regras antes de tomar decisões de roteamento.
+O registro de políticas usa snapshots estritos de dados, sem código ou permissões,
+com revisão transacional, auditoria e rollback. O gate exige split de teste, cobertura
+mínima de categorias, qualidade integral, modelos/preços/contexto atuais e limites de
+recursos explícitos. Agregados são recalculados dos casos e custos das tentativas;
+evidência desconhecida, incompatível, antiga ou alterada não possui bypass.
+
+O contexto `router-lab-v2` inclui snapshot/limites/revisão e impede reutilizar resultados
+anteriores para promoção. Revisão do catálogo inclui o histórico de decisões, de modo
+que rollback não restaura validade de uma avaliação velha. A cópia aprovada é conferida
+contra seu checksum e a auditoria de aprovação, não apenas contra JSON válido.
+
+A composição do gateway usa vínculos persistidos de snapshot/modelo por sessão. Novas
+aprovações e rollback afetam sessões novas; modelo conhecido permanece estável nas
+existentes. Fallback de regras é explícito e não seleciona outro modelo. Configuração
+nova incompatível com a aprovação usa a política embutida até reavaliação; vínculo de
+modelo inválido bloqueia execução. Nenhuma ferramenta/permissão do motor é ampliada.
+Procedimento em [Revisão de políticas](../runbooks/routing-policies.md).
+
+O dashboard do laboratório continua separado. O registro não publica software nem
+altera políticas por geração automática. O conjunto restrito continua com execução
+direct; classificação de recuperação/delegação não implementa subagentes.

@@ -190,7 +190,7 @@ class AgentLoop:
     ) -> tuple[str, str]:
         run.advance(RunState.ROUTING)
         route = await self._router.decide(
-            RouteRequest(text=message.text, session_id=message.session_id)
+            RouteRequest(text=message.text, session_id=run.context.session_id)
         )
         run.route_version = route.policy_version
         run.advance(RunState.CONTEXT_READY)

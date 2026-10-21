@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
@@ -24,6 +25,7 @@ from neoson_core.routing.lab_meter import Attempt, Ledger, Meter
 from neoson_core.routing.lab_plan import BenchmarkPlan, Scenario
 from neoson_core.routing.lab_sandbox import Sandbox
 from neoson_core.routing.lab_store import EvaluationStore
+from neoson_core.routing.policy_config import PolicySnapshot, SnapshotRouter
 from neoson_core.routing.rules import RulesRouter
 
 EngineFactory = Callable[[Path, LLMProvider, Router, Sandbox, BenchmarkPlan], Engine]
@@ -31,8 +33,11 @@ ProviderFactory = Callable[[RoutingCase, str], LLMProvider]
 
 
 class ObservedRouter:
-    def __init__(self, profile: str, baseline: bool) -> None:
+    def __init__(
+        self, profile: str, baseline: bool, snapshot: PolicySnapshot | None = None
+    ) -> None:
         self.profile, self.baseline = profile, baseline
+        self.snapshot = snapshot
         self.decision: RouteDecision | None = None
 
     async def decide(self, request: RouteRequest) -> RouteDecision:
@@ -47,7 +52,11 @@ class ObservedRouter:
                 "fixed:model",
             )
             if self.baseline
-            else await RulesRouter(self.profile).decide(request)
+            else await (
+                RulesRouter(self.profile)
+                if self.snapshot is None
+                else SnapshotRouter(self.snapshot, self.profile)
+            ).decide(request)
         )
         return self.decision
 
@@ -150,6 +159,7 @@ class RouterBenchmark:
                 )
             report: dict[str, object] = {
                 "id": str(request_id),
+                "evaluated_at": datetime.now(UTC).isoformat(),
                 "dataset_id": dataset.id,
                 "dataset_version": dataset.version,
                 "dataset_checksum": dataset.checksum,
@@ -163,7 +173,7 @@ class RouterBenchmark:
                     "cases": [asdict(r) for r in base],
                 },
                 "candidate": {
-                    "policy_version": "rules-v1",
+                    "policy_version": plan.candidate_version,
                     "metrics": b,
                     "cases": [asdict(r) for r in candidate],
                 },
@@ -195,7 +205,11 @@ class RouterBenchmark:
         ledger: Ledger,
     ) -> CaseMetrics:
         profile = case.session_model_profile or default_profile
-        router = ObservedRouter(profile, baseline)
+        router = ObservedRouter(
+            profile,
+            baseline,
+            None if plan.promotion is None else plan.promotion.snapshot,
+        )
         tools = Sandbox(scenario)
         meter = Meter(self.provider(case, profile), plan, scenario, ledger)
         started = perf_counter()

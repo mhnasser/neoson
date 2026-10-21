@@ -228,6 +228,12 @@ tentativas sem consumo conhecido não viram custo zero. Veja o
 [runbook](docs/runbooks/router-lab.md) para executar sem rede ou com API e orçamento
 explícitos. Benchmarks não alteram a política ativa.
 
+Políticas podem ser aprovadas explicitamente pela CLI `python -m neoson_gateway.router_policy`,
+com evidência de teste válida, contexto atual e limites de qualidade/segurança/recursos.
+Snapshots e auditoria preservam rollback. Sessões mantêm o snapshot e o modelo vinculados
+no primeiro turno; novas aprovações valem para novas sessões. Veja o
+[runbook de revisão](docs/runbooks/routing-policies.md).
+
 ## Configuração
 
 ```bash

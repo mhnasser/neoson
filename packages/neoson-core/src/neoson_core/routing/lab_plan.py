@@ -9,6 +9,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, ValidationError, field_validator, model_validator
 
 from neoson_core.routing.dataset import Identifier, Split, Text, _Contract, _object
+from neoson_core.routing.policy_config import PromotionContext
 
 ToolName = Literal[
     "calendar_list",
@@ -55,6 +56,7 @@ class Scenario(_Contract):
 
 
 class BenchmarkPlan(_Contract):
+    promotion: PromotionContext | None = None
     dataset_checksum: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
     split: Split
     mode: Literal["scripted", "openai"]
@@ -117,12 +119,16 @@ class BenchmarkPlan(_Contract):
         data["scenarios_checksum"] = digest(
             [s.model_dump(mode="json") for s in self.scenarios]
         )
-        data["evaluator_version"] = "router-lab-v1"
+        data["evaluator_version"] = "router-lab-v2"
         data["baseline_version"] = "single-model-v1"
-        data["candidate_version"] = "rules-v1"
+        data["candidate_version"] = self.candidate_version
         data["tools_version"] = "sandbox-v1"
         data["approval_mode"] = "required_for_sensitive"
         return data
+
+    @property
+    def candidate_version(self) -> str:
+        return "rules-v1" if self.promotion is None else self.promotion.snapshot.version
 
 
 def digest(value: object) -> str:

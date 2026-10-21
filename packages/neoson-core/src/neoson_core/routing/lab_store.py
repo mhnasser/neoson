@@ -60,7 +60,7 @@ class EvaluationStore:
                     dataset.version,
                     dataset.checksum,
                     plan.split,
-                    "rules-v1",
+                    plan.candidate_version,
                     checksum,
                     json.dumps(context, ensure_ascii=False),
                     now_iso(),

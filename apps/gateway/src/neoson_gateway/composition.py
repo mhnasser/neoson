@@ -18,12 +18,14 @@ from neoson_core.memory.curated import SqliteCuratedMemory
 from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
 from neoson_core.providers.openai_provider import OpenAIProvider
-from neoson_core.routing.rules import RulesRouter
+from neoson_core.routing.policy_registry import PolicyRegistry
+from neoson_core.routing.session_router import SessionRouter
 from neoson_core.skills.registry import SqliteSkillRegistry
 from neoson_core.tools.calendar_fake import FakeCalendar
 from neoson_core.tools.memory_facts import MemoryForget, MemorySave
 from neoson_core.tools.memory_search import MemorySearch
 from neoson_core.tools.registry import ToolRegistry
+from neoson_gateway.routing_runtime import BoundProvider, binding_for, runtime_hash
 
 # Ferramentas que o gateway registra; as skills só podem declarar estas.
 TOOL_NAMES = (
@@ -37,7 +39,17 @@ TOOL_NAMES = (
 def build_engine(settings: ServerSettings) -> Engine:
     if settings.llm_provider == "echo":
         return EchoEngine()
-    provider = build_provider(settings)
+    if settings.openai_api_key is None:
+        raise ConfigError(
+            "OPENAI_API_KEY é obrigatória com NEOSON_LLM_PROVIDER=openai."
+        )
+    if not settings.llm_model:
+        raise ConfigError(
+            "NEOSON_LLM_MODEL é obrigatório com NEOSON_LLM_PROVIDER=openai."
+        )
+    binding = binding_for(settings)
+    registry = PolicyRegistry(settings.db_path)
+    provider = BoundProvider(settings, registry)
     zone = ZoneInfo(settings.timezone)
     memory = SqliteCuratedMemory(settings.db_path)
 
@@ -46,7 +58,7 @@ def build_engine(settings: ServerSettings) -> Engine:
 
     return AgentLoop(
         provider=provider,
-        router=RulesRouter(settings.primary_model_profile),
+        router=SessionRouter(registry, binding, runtime_hash(settings)),
         budget=Budget(
             max_steps=settings.max_agent_steps,
             timeout_seconds=settings.run_timeout_seconds,
