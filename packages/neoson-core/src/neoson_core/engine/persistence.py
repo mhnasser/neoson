@@ -7,6 +7,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 from neoson_core.engine._validation import frozen_mapping, require_text
+from neoson_core.engine.actions import PendingAction
 from neoson_core.engine.conversation import RunStatus
 from neoson_core.engine.llm import Usage
 from neoson_core.engine.messages import Message
@@ -48,11 +49,13 @@ class RunRecord:
     route_version: str | None = None
     events: tuple[OutboxEvent, ...] = ()
     skills: tuple[SkillRef, ...] = ()
+    pending_actions: tuple[PendingAction, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "events", tuple(self.events))
         object.__setattr__(self, "skills", tuple(self.skills))
+        object.__setattr__(self, "pending_actions", tuple(self.pending_actions))
 
 
 class SessionNotFound(LookupError):

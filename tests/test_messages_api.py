@@ -62,14 +62,18 @@ def test_valid_message_is_translated_to_the_engine_and_back(
         run_id=engine.run_id, text="resposta para: Olá, NeoSon", status="completed"
     )
     assert response.json()["protocol_version"] == 1
-    assert engine.received == [UserMessage(text="Olá, NeoSon", session_id=session)]
+    assert engine.received == [
+        UserMessage(text="Olá, NeoSon", session_id=session, principal="http-owner")
+    ]
 
 
 def test_session_id_is_optional(client: TestClient, engine: FakeEngine) -> None:
     response = client.post(URL, json={"protocol_version": 1, "text": "oi"})
 
     assert response.status_code == 200
-    assert engine.received == [UserMessage(text="oi", session_id=None)]
+    assert engine.received == [
+        UserMessage(text="oi", session_id=None, principal="http-owner")
+    ]
 
 
 def test_accepts_text_at_the_maximum_length(client: TestClient) -> None:

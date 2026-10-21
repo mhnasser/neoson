@@ -98,6 +98,15 @@ responder ou responder fora do contrato; 2 para mensagem, opção ou URL inváli
 |---|---|
 | `GET /api/v1/health/live` | Indica que o processo está ativo |
 | `POST /api/v1/messages` | Recebe `{"text": "..."}` (e `session_id` opcional) e devolve a resposta e o `session_id`; exige `Authorization: Bearer <NEOSON_API_TOKEN>` |
+| `GET /api/v1/runs/{run_id}/actions` | Lista ações pendentes da execução para revisão autenticada |
+| `GET /api/v1/actions/{id}` | Consulta a ação concreta e seu estado |
+| `POST /api/v1/actions/{id}/decision` | Aprova ou nega com `{"approve": true/false}` |
+| `POST /api/v1/actions/{id}/resume` | Executa somente a ação aprovada e ainda válida |
+
+As rotas de ações exigem o mesmo bearer e estão disponíveis com o motor configurado
+para OpenAI. Aprovações sobrevivem a reinícios e não autorizam outros argumentos ou
+execuções. Falhas com efeito incerto bloqueiam repetição automática. Veja o
+[procedimento de revisão e retomada](docs/runbooks/action-approvals.md).
 
 A resposta vem do Agent Loop, pelo modelo configurado em `NEOSON_LLM_MODEL`. O modelo pode usar
 ferramentas registradas; cada pedido é validado e passa pela Policy Engine, e ações sensíveis

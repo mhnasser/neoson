@@ -11,6 +11,7 @@ class UserMessage:
     text: str
     session_id: UUID | None = None
     channel: str = "http"
+    principal: str | None = None
 
 
 class RunStatus(StrEnum):

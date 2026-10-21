@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from neoson_core.engine import Message, Role, ToolCall
 from neoson_core.engine.persistence import RunRecord, SessionNotFound
 from neoson_core.infrastructure import outbox
+from neoson_core.infrastructure.actions import insert as insert_action
 from neoson_core.infrastructure.db import connect, migrate, now_iso, transaction
 
 
@@ -134,6 +135,13 @@ class SqliteConversationStore:
                 )
             for event in record.events:
                 outbox.insert(connection, event)
+            for action in record.pending_actions:
+                if (
+                    action.run_id != record.run_id
+                    or action.session_id != record.session_id
+                ):
+                    raise ValueError("Ação não corresponde à execução.")
+                insert_action(connection, action)
             connection.execute(
                 "UPDATE sessions SET updated_at = ? WHERE id = ?",
                 (record.ended_at.isoformat(), str(record.session_id)),

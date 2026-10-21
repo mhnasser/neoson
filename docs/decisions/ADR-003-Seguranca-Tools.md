@@ -56,7 +56,41 @@ estruturados ficam no resultado.
 - Escrever na memória curada do próprio NeoSon (`memory_save`, `memory_forget`) é escrita dentro
   da área autorizada: entra como `read`. Os fatos ficam visíveis no vault para revisão, podem ser
   esquecidos, e a ferramenta só deve salvar o que o usuário pediu explicitamente.
-- O fluxo HTTP para conceder aprovações fica para uma tarefa futura; a Policy Engine já aceita
-  aprovações concedidas.
-- Ferramentas de escrita com efeito externo também precisam de chave de idempotência no worker
-  (§10.2), definida quando a primeira delas existir.
+- O gateway oferece consulta, decisão e retomada autenticadas de ações persistidas. A API
+  de mensagens v1 continua devolvendo `needs_approval`; o `run_id` permite descobrir as ações.
+- Concessões em memória da Policy Engine continuam úteis em testes isolados. O gateway não
+  oferece uma grant global por nome/argumentos: sua autoridade está no registro concreto,
+  vinculado à identidade, execução, sessão, contexto e prazo.
+
+## Autorização durável e retomada
+
+Pendências e execução original são gravadas na mesma transação SQLite. Cada pendência
+contém uma chamada exata, identidade, validade de 15 minutos, tempo restante e vínculo
+à skill aprovada, quando houver. Um checksum confere a estrutura imutável; não constitui
+assinatura contra quem controla o banco. Argumentos são privados e ficam somente no banco
+e na resposta autenticada de revisão, nunca em eventos, logs ou vault.
+
+A implantação pessoal usa um único proprietário HTTP: todos os portadores do bearer
+pertencem à mesma identidade. O cliente não escolhe o proprietário por JSON/header/query.
+Rotação do token não muda esse proprietário. Isso não é autenticação multiusuário; separar
+usuários exige uma nova composição de identidade e isolamento de sessões. Canais sem
+identidade confiável não criam concessões retomáveis. A interface de consentimento do
+Telegram fica separada desta API; nenhum texto do modelo ou mensagem “sim” concede permissão.
+
+A decisão humana e a retomada são operações separadas. Antes de executar, o serviço
+confere expiração, contexto atual, schema/risco, disponibilidade da ferramenta e a versão,
+integridade e permissões atuais da skill. Mudanças invalidam a ação. O tempo de execução
+fica limitado ao menor teto entre o remanescente salvo e o servidor atual; quando há
+várias ações pendentes no passo, o remanescente é dividido entre elas. Não há nova chamada
+ao modelo nem reconstituição de argumentos. Ferramentas não pendentes daquele passo não
+são executadas na retomada. O resultado desta operação é o estado da ação; a execução
+original continua no histórico como suspensa.
+
+Uma transação confirma `executing` antes do efeito. Concorrentes não podem adquirir a
+mesma concessão. Retry de ação `completed` só devolve o estado salvo. Erro/timeout vira
+`unknown`; queda após a reserva ou falha ao confirmar pode deixar `executing`. Esses
+estados exigem reconciliação e nunca liberam repetição automática. Não se promete efeito
+externo exatamente uma vez: a integração futura também precisa usar `ToolContext.action_id`
+como chave de idempotência e consultar o fornecedor antes de repetir algo incerto (§10.2).
+
+Procedimento e limites no [runbook de ações](../runbooks/action-approvals.md).

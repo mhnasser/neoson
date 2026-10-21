@@ -68,9 +68,7 @@ class ToolRegistry:
         try:
             output = await tool.run(arguments, context)
         except Exception:
-            logger.exception(
-                "ferramenta %s falhou no run %s", call.name, context.run_id
-            )
+            logger.warning("ferramenta %s falhou no run %s", call.name, context.run_id)
             return ToolResult(
                 call_id=call.id, status=ToolResultStatus.ERROR, summary=TOOL_FAILED
             )

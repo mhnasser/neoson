@@ -3,9 +3,10 @@
 import asyncio
 import logging
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+from neoson_core.engine.actions import PendingAction, action_context, skill_binding
 from neoson_core.engine.conversation import RunResult, RunStatus, UserMessage
 from neoson_core.engine.curated import CuratedMemory, MemoryFact
 from neoson_core.engine.llm import (
@@ -80,10 +81,13 @@ class _Stop(Exception):
 class _Suspend(Exception):
     """Suspende a execução até o usuário aprovar as ferramentas pedidas."""
 
-    def __init__(self, tool_names: Sequence[str]) -> None:
+    def __init__(
+        self, tool_names: Sequence[str], calls: Sequence[ToolCall] = ()
+    ) -> None:
         names = ", ".join(sorted(set(tool_names)))
         super().__init__(names)
         self.user_text = f"Preciso da sua aprovação para executar: {names}."
+        self.calls = tuple(calls)
 
 
 class AgentLoop:
@@ -103,6 +107,7 @@ class AgentLoop:
         skills: SkillRegistry | None = None,
         system_prompt: str = SYSTEM_PROMPT,
         on_state: StateObserver | None = None,
+        approval_runtime: str | None = None,
     ) -> None:
         self._provider = provider
         self._router = router
@@ -117,6 +122,11 @@ class AgentLoop:
         self._skills = skills
         self._system_prompt = system_prompt
         self._on_state = on_state
+        self._approval_context = (
+            action_context(approval_runtime, self._policy, tools)
+            if approval_runtime is not None and tools is not None
+            else None
+        )
 
     async def run(self, message: UserMessage) -> RunResult:
         """Executa um pedido; com `store`, continua a sessão e grava o resultado.
@@ -135,6 +145,23 @@ class AgentLoop:
             # Sem o pedido de ferramenta pendente: o histórico não fica com chamada
             # órfã.
             transcript = [user, Message(role=Role.ASSISTANT, content=result.text)]
+            if self._approval_context and message.principal and self._tools:
+                for call in suspend.calls:
+                    run.pending_actions.append(
+                        PendingAction(
+                            id=uuid4(),
+                            run_id=context.run_id,
+                            session_id=session_id,
+                            owner=message.principal,
+                            call=call,
+                            context=self._approval_context,
+                            expires_at=datetime.now(UTC) + timedelta(minutes=15),
+                            timeout_seconds=run.remaining_seconds()
+                            / max(len(suspend.calls), 1),
+                            risk=self._tools.check(call),
+                            skill=skill_binding(run.skills.active),
+                        )
+                    )
         except _Stop as stop:
             logger.warning("run %s interrompido: %s", context.run_id, stop.reason)
             run.advance(RunState.FAILED)
@@ -178,6 +205,7 @@ class AgentLoop:
                 route_version=run.route_version,
                 events=(_run_event(context, result, run.route_version, skills),),
                 skills=skills,
+                pending_actions=tuple(run.pending_actions),
             )
         )
 
@@ -297,9 +325,12 @@ class AgentLoop:
                 risk = RiskLevel.SENSITIVE_WRITE
             decisions.append((call, self._policy.evaluate(call, risk), None))
 
-        pending = [c.name for c, v, _ in decisions if v is Verdict.REQUIRE_APPROVAL]
+        pending = [c for c, v, _ in decisions if v is Verdict.REQUIRE_APPROVAL]
         if pending:
-            raise _Suspend(pending)
+            run.check_limits()
+            if len(pending) > 16:
+                raise _Stop("limite de ações", "Muitas ações em um único pedido.")
+            raise _Suspend([c.name for c in pending], pending)
 
         replies = []
         for call, verdict, rejection in decisions:
@@ -332,6 +363,7 @@ class _Run:
         self.route_version: str | None = None
         self.transcript: list[Message] = []
         self.skills = SkillContext(skills)
+        self.pending_actions: list[PendingAction] = []
         self._on_state = on_state
         self._notify()
 

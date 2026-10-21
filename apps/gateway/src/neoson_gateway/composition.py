@@ -13,6 +13,8 @@ from neoson_core.engine import (
     LLMProvider,
     PolicyEngine,
 )
+from neoson_core.engine.actions import ActionService, action_context
+from neoson_core.infrastructure.actions import SqliteActionStore
 from neoson_core.infrastructure.config import ConfigError, ServerSettings
 from neoson_core.memory.curated import SqliteCuratedMemory
 from neoson_core.memory.search import SqliteHistorySearch
@@ -71,6 +73,25 @@ def build_engine(settings: ServerSettings) -> Engine:
         memory=memory,
         memory_max_facts=settings.memory_max_facts,
         skills=SqliteSkillRegistry(settings.db_path),
+        approval_runtime=runtime_hash(settings),
+    )
+
+
+def build_actions(settings: ServerSettings) -> ActionService | None:
+    if settings.llm_provider == "echo":
+        return None
+    zone = ZoneInfo(settings.timezone)
+    tools = build_tools(
+        settings, SqliteCuratedMemory(settings.db_path), lambda: datetime.now(zone)
+    )
+    policy = PolicyEngine(settings.approval_mode)
+    return ActionService(
+        SqliteActionStore(settings.db_path),
+        tools,
+        policy,
+        action_context(runtime_hash(settings), policy, tools),
+        settings.run_timeout_seconds,
+        SqliteSkillRegistry(settings.db_path),
     )
 
 

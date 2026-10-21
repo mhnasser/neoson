@@ -54,7 +54,9 @@ def test_client_talks_to_the_real_gateway_in_process() -> None:
     reply = GatewayClient(gateway(engine), TOKEN).send("Olá, NeoSon", session)
 
     assert (reply.text, reply.status) == ("Olá, NeoSon", "completed")
-    assert engine.received == [UserMessage(text="Olá, NeoSon", session_id=session)]
+    assert engine.received == [
+        UserMessage(text="Olá, NeoSon", session_id=session, principal="http-owner")
+    ]
 
 
 def test_client_raises_gateway_error_with_the_error_contract() -> None:

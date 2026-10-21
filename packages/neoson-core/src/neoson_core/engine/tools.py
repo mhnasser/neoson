@@ -22,6 +22,7 @@ class RiskLevel(StrEnum):
 class ToolContext:
     run_id: UUID
     session_id: UUID
+    action_id: UUID | None = None
 
 
 class ToolRejected(Exception):
@@ -71,6 +72,10 @@ class PolicyEngine:
             raise ValueError(f"Modo de aprovação desconhecido: {mode}.")
         self._mode = mode
         self._approvals: dict[str, Approval] = {}
+
+    @property
+    def mode(self) -> ApprovalMode:
+        return self._mode
 
     def evaluate(
         self, call: ToolCall, risk: RiskLevel, now: datetime | None = None

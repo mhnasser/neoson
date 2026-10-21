@@ -16,7 +16,9 @@ from neoson_contracts.api.v1.messages import (
     MessageStatus,
 )
 from neoson_core.engine import Engine, RunStatus, SessionNotFound, UserMessage
+from neoson_core.engine.actions import ActionConflict, ActionNotFound, ActionService
 from neoson_gateway import __version__
+from neoson_gateway.actions import HTTP_OWNER, actions_router
 
 health = APIRouter(prefix="/api/v1/health", tags=["health"])
 
@@ -79,7 +81,11 @@ def messages_router(engine: Engine, api_token: str) -> APIRouter:
         """Recebe uma mensagem do usuário e devolve a resposta do NeoSon."""
         try:
             result = await engine.run(
-                UserMessage(text=request.text, session_id=request.session_id)
+                UserMessage(
+                    text=request.text,
+                    session_id=request.session_id,
+                    principal=HTTP_OWNER,
+                )
             )
         except SessionNotFound:
             return _error(
@@ -98,12 +104,28 @@ def messages_router(engine: Engine, api_token: str) -> APIRouter:
     return router
 
 
-def create_app(engine: Engine, api_token: str) -> FastAPI:
+def create_app(
+    engine: Engine, api_token: str, actions: ActionService | None = None
+) -> FastAPI:
     if not api_token:
         raise ValueError("O gateway exige um token de API.")
     app = FastAPI(title="NeoSon Gateway", version=__version__)
     app.include_router(health)
     app.include_router(messages_router(engine, api_token))
+    if actions is not None:
+        app.include_router(actions_router(actions, require_token(api_token)))
+
+    @app.exception_handler(ActionNotFound)
+    async def action_not_found(request: Request, error: ActionNotFound) -> JSONResponse:
+        return _error(
+            404, ErrorResponse(code="action_not_found", message="Ação não encontrada.")
+        )
+
+    @app.exception_handler(ActionConflict)
+    async def action_conflict(request: Request, error: ActionConflict) -> JSONResponse:
+        return _error(
+            409, ErrorResponse(code="action_conflict", message="Ação indisponível.")
+        )
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(
