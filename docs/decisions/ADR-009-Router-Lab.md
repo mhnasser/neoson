@@ -125,6 +125,11 @@ nova incompatível com a aprovação usa a política embutida até reavaliação
 modelo inválido bloqueia execução. Nenhuma ferramenta/permissão do motor é ampliada.
 Procedimento em [Revisão de políticas](../runbooks/routing-policies.md).
 
-O dashboard do laboratório continua separado. O registro não publica software nem
+O dashboard `Dashboard/Router-Lab.md` projeta agregados históricos do laboratório e
+decisões do catálogo, lendo as fontes separadas sem conversas ou snapshots privados.
+Eventos transacionais permitem atualização pelo worker; reconstrução explícita atende
+resultados antigos sem eventos. Integridade histórica não equivale a elegibilidade para
+promoção, nem a seleção do catálogo representa a versão efetiva de cada sessão.
+O registro não publica software nem
 altera políticas por geração automática. O conjunto restrito continua com execução
 direct; classificação de recuperação/delegação não implementa subagentes.

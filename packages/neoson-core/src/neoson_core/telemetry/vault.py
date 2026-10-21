@@ -11,7 +11,7 @@ import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, tzinfo
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from neoson_core.engine import OutboxEvent
 from neoson_core.telemetry.metrics import (
@@ -43,9 +43,12 @@ def write_atomic(path: Path, text: str) -> bool:
     if path.exists() and path.read_text(encoding="utf-8") == text:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(text, encoding="utf-8", newline="\n")
-    os.replace(temporary, path)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8", newline="\n")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
     return True
 
 
@@ -128,7 +131,8 @@ def render_home(
         + ("\n".join(warnings) if warnings else "Nenhum aviso.")
         + "\n\nPainéis: [[Dashboard/LLM-Custos|LLM & Custos]] · "
         "[[Dashboard/NeoSon-System|NeoSon System]] · "
-        "[[Dashboard/Skills-Learning|Skills & Learning]]\n"
+        "[[Dashboard/Skills-Learning|Skills & Learning]] · "
+        "[[Dashboard/Router-Lab|Router Lab]]\n"
     )
 
 

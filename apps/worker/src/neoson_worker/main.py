@@ -17,7 +17,14 @@ from neoson_core.infrastructure.config import (
 from neoson_core.infrastructure.db import connect, migrate
 from neoson_core.memory import curated, vault_export
 from neoson_core.skills import curation
-from neoson_core.telemetry import proposal_metrics, skill_metrics, usage, vault
+from neoson_core.telemetry import (
+    proposal_metrics,
+    router_metrics,
+    router_vault,
+    skill_metrics,
+    usage,
+    vault,
+)
 from neoson_core.telemetry.pricing import Price
 from neoson_worker.curation_main import limits_for
 from neoson_worker.worker import Handler, RetryPolicy, Worker
@@ -32,6 +39,7 @@ def build_handlers(settings: ServerSettings | None = None) -> dict[str, list[Han
     handlers = [Handler(usage.HANDLER_NAME, usage.UsageRecorder(prices))]
     memory_handlers = []
     skill_handlers = []
+    router_handlers = []
     if settings is not None and settings.metrics_export_enabled:
         zone = ZoneInfo(settings.timezone)
         exporter = vault.VaultExporter(settings.vault_path, zone)
@@ -39,8 +47,17 @@ def build_handlers(settings: ServerSettings | None = None) -> dict[str, list[Han
         skill_handlers.append(Handler(vault.HANDLER_NAME, exporter))
         memory_exporter = vault_export.MemoryVaultExporter(settings.vault_path, zone)
         memory_handlers.append(Handler(vault_export.HANDLER_NAME, memory_exporter))
+        router_handlers.append(
+            Handler(
+                router_vault.HANDLER_NAME,
+                router_vault.RouterVaultExporter(
+                    settings.vault_path, settings.db_path, settings.router_lab_db_path
+                ),
+            )
+        )
     routes = {event_type: list(handlers) for event_type in usage.EVENT_TYPES}
     routes[curated.EVENT_TYPE] = memory_handlers
+    routes.update({kind: list(router_handlers) for kind in router_metrics.EVENT_TYPES})
     routes.update(
         {event_type: list(skill_handlers) for event_type in skill_metrics.EVENT_TYPES}
     )
@@ -72,6 +89,10 @@ def export_vault(settings: ServerSettings, days: int = 7) -> int:
             for path in exporter.export(connection, today - timedelta(days=offset))
         }
         changed.update(memory_exporter.export(connection))
+    if router_vault.RouterVaultExporter(
+        settings.vault_path, settings.db_path, settings.router_lab_db_path
+    ).export():
+        changed.add(settings.vault_path / router_vault.PANEL)
     logging.getLogger("neoson_worker").info(
         "vault em %s: %d arquivo(s) atualizado(s)", settings.vault_path, len(changed)
     )
@@ -90,6 +111,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="regera no vault as notas dos últimos 7 dias e os dashboards, e sai",
     )
+    parser.add_argument(
+        "--router-lab",
+        action="store_true",
+        help="consome a outbox do banco de laboratório configurado",
+    )
     args = parser.parse_args(argv)
     try:
         settings = load_settings()
@@ -103,8 +129,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.export_vault:
         return export_vault(settings)
 
+    database = settings.router_lab_db_path if args.router_lab else settings.db_path
+    if args.router_lab and not database.exists():
+        logging.getLogger("neoson_worker").info(
+            "Laboratório ausente; nenhum banco criado."
+        )
+        return 0
+
     worker = Worker(
-        db_path=settings.db_path,
+        db_path=database,
         handlers=build_handlers(settings),
         worker_id=f"{socket.gethostname()}:{os.getpid()}",
         lease_seconds=settings.worker_lease_seconds,

@@ -8,6 +8,8 @@ from contextlib import closing
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from neoson_core.engine import OutboxEvent
+from neoson_core.infrastructure import outbox
 from neoson_core.infrastructure.db import connect, migrate, now_iso, transaction
 from neoson_core.routing.dataset import RoutingDataset
 from neoson_core.routing.lab_plan import BenchmarkPlan, digest
@@ -198,6 +200,13 @@ class PolicyRegistry:
                 " WHERE singleton=1",
                 (snapshot.version, str(request_id)),
             )
+            outbox.insert(
+                c,
+                OutboxEvent(
+                    type="neoson.router.policy.promoted",
+                    payload={"version": snapshot.version, "review_id": str(request_id)},
+                ),
+            )
         return snapshot.version
 
     def rollback(self, request_id: UUID, expected_revision: str) -> str:
@@ -238,6 +247,13 @@ class PolicyRegistry:
                 "UPDATE routing_policy_state SET version=?,event_id=?"
                 " WHERE singleton=1",
                 (previous.version, str(request_id)),
+            )
+            outbox.insert(
+                c,
+                OutboxEvent(
+                    type="neoson.router.policy.rolled_back",
+                    payload={"version": previous.version, "review_id": str(request_id)},
+                ),
             )
             return previous.version
 

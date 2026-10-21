@@ -106,3 +106,35 @@ saídas, respostas simuladas ou mensagens de exceções. O modelo retornado pelo
 registrado por hash, junto ao nome configurado no contexto; não é reproduzido como texto
 livre. Casos e cenários privados ficam apenas nos arquivos locais e no banco descartável.
 Use o banco separado do exemplo; não importe este histórico sintético no banco de conversas.
+
+## Painel no Obsidian
+
+`Dashboard/Router-Lab.md`, acessível pela Home, mostra as últimas 100 avaliações:
+baseline/candidata, dataset/split, qualidade, custo/cache/duração e matrizes de confusão.
+Inclui a seleção histórica do catálogo e as últimas 100 decisões de promoção/rollback.
+Sessões existentes podem manter outra política; o painel não substitui a revisão da CLI.
+
+Configure `NEOSON_ROUTER_LAB_DB_PATH` para o mesmo caminho passado a `--db` no benchmark
+(padrão `data/router-lab.db`). O catálogo continua em `NEOSON_DB_PATH`. A projeção abre
+as duas fontes em modo somente leitura, sem importar resultados entre elas. Cada fonte
+tem sua própria leitura consistente; não há snapshot atômico entre bancos distintos.
+Fonte ausente, incompatível ou indisponível é indicada, sem criar/migrar o laboratório.
+
+```bash
+neoson-worker --export-vault
+neoson-worker --router-lab --once
+neoson-worker --once
+```
+
+O primeiro comando reconstrói os painéis, inclusive para bancos antigos sem eventos.
+Os outros consomem, respectivamente, eventos do laboratório e do banco de conversas.
+Para atualização contínua, mantenha os dois workers sem `--once`; se ambos os caminhos
+apontarem para o mesmo banco, basta um worker. `NEOSON_METRICS_EXPORT_ENABLED=false`
+desliga os handlers de exportação; a reconstrução explícita continua disponível.
+Eventos são gravados na mesma transação do benchmark ou decisão, e retries não duplicam
+o efeito. O arquivo usa substituição atômica e só muda quando a projeção muda.
+
+`valid` significa integridade/estrutura histórica, não elegibilidade atual para promoção.
+`invalid` omite métricas inconsistentes e `none` indica execução sem relatório concluído.
+Valores desconhecidos aparecem como `—`; resultados `scripted` nunca mostram economia.
+Textos dos casos, conversas, snapshots e credenciais não são exportados.

@@ -5,6 +5,8 @@ from contextlib import closing
 from pathlib import Path
 from uuid import UUID
 
+from neoson_core.engine import OutboxEvent
+from neoson_core.infrastructure import outbox
 from neoson_core.infrastructure.db import connect, migrate, now_iso, transaction
 from neoson_core.routing.dataset import RoutingDataset
 from neoson_core.routing.lab_plan import BenchmarkPlan, digest
@@ -66,6 +68,13 @@ class EvaluationStore:
                     now_iso(),
                 ),
             )
+            outbox.insert(
+                c,
+                OutboxEvent(
+                    type="neoson.router.benchmark.started",
+                    payload={"evaluation_id": str(request_id)},
+                ),
+            )
         return None
 
     def finish(self, request_id: UUID, report: dict[str, object]) -> None:
@@ -78,10 +87,25 @@ class EvaluationStore:
             ).rowcount
             if changed != 1:
                 raise BenchmarkConflict("Reserva do benchmark indisponível.")
+            outbox.insert(
+                c,
+                OutboxEvent(
+                    type="neoson.router.benchmark.completed",
+                    payload={"evaluation_id": str(request_id)},
+                ),
+            )
 
     def fail(self, request_id: UUID) -> None:
         with closing(connect(self.path)) as c, transaction(c):
-            c.execute(
+            changed = c.execute(
                 "UPDATE eval_runs SET status='failed' WHERE id=? AND status='running'",
                 (str(request_id),),
-            )
+            ).rowcount
+            if changed:
+                outbox.insert(
+                    c,
+                    OutboxEvent(
+                        type="neoson.router.benchmark.failed",
+                        payload={"evaluation_id": str(request_id)},
+                    ),
+                )

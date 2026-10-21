@@ -57,6 +57,7 @@ class ServerSettings(BaseSettings):
     )
 
     db_path: Path = Path("data/neoson.db")
+    router_lab_db_path: Path = Path("data/router-lab.db")
     vault_path: Path = Path("data/NeoSon-Vault")
     backup_path: Path = Path("data/backups")
     skills_path: Path = Path("skill_library")

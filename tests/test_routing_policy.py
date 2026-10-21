@@ -33,10 +33,14 @@ from neoson_core.routing.policy_config import PolicySnapshot
 from neoson_core.routing.policy_gate import PolicyRejected
 from neoson_core.routing.policy_registry import PolicyRegistry
 from neoson_core.routing.rules import RulesRouter
+from neoson_core.telemetry.router_metrics import load_metrics
+from neoson_core.telemetry.router_vault import PANEL, RouterVaultExporter
 from neoson_gateway.composition import build_engine
 from neoson_gateway.router_lab import build_engine as lab_engine
 from neoson_gateway.router_policy import main
 from neoson_gateway.routing_runtime import binding_for, runtime_hash
+from neoson_worker.main import build_handlers
+from neoson_worker.worker import Worker
 
 
 @dataclass
@@ -557,3 +561,74 @@ def test_valid_json_with_recomputed_hash_still_needs_approval_audit(
         )
     result = asyncio.run(build_engine(ready.settings).run(UserMessage(text="texto")))
     assert result.model == "fake-balanced" and "policy_invalid" in caplog.text
+
+
+def test_benchmark_review_promotion_rollback_updates_vault(ready: Ready) -> None:
+    settings = ready.settings.model_copy(update={"router_lab_db_path": ready.evidence})
+    routes = build_handlers(settings)
+    lab = Worker(ready.evidence, routes, "lab-cycle")
+    runtime = Worker(settings.db_path, routes, "policy-cycle")
+    assert lab.run_once() == 2
+    path = settings.vault_path / PANEL
+    assert "rules-v1" in path.read_text(encoding="utf-8")
+    metrics = load_metrics(settings.db_path, ready.evidence)
+    assert metrics.runs[0].integrity == "valid"
+    assert metrics.runs[0].savings == 50.0
+    request = uuid4()
+    assert ready.promote(request) == "rules-v2"
+    assert runtime.run_once() == 1
+    assert load_metrics(settings.db_path, ready.evidence).active == "rules-v2"
+    assert "| promote | rules-v2 |" in path.read_text(encoding="utf-8")
+    ready.registry.rollback(uuid4(), ready.registry.status()["revision"])
+    assert runtime.run_once() == 1
+    metrics = load_metrics(settings.db_path, ready.evidence)
+    assert metrics.active == "rules-v1" and metrics.total == 1
+    content = path.read_text(encoding="utf-8")
+    assert "| rollback | rules-v1 |" in content
+    assert "| promote | rules-v2 |" in content
+    with pytest.raises(PolicyRejected):
+        ready.promote(request)
+    assert lab.run_once() == runtime.run_once() == 0
+    before = path.stat().st_mtime_ns
+    assert not RouterVaultExporter(
+        settings.vault_path, settings.db_path, ready.evidence
+    ).export()
+    assert path.stat().st_mtime_ns == before
+    assert "test-only" not in content and "keywords" not in content
+
+
+def test_regression_blocks_promotion_and_is_visible_in_vault(ready: Ready) -> None:
+    def regress(report: dict[str, Any]) -> None:
+        report["candidate"]["cases"][0]["passed"] = False
+        report["candidate"]["metrics"].update(passed=7, quality_rate=0.875)
+        report["quality_regressions"] = [report["candidate"]["cases"][0]["id"]]
+
+    ready.alter(regress, rehash=True)
+    with pytest.raises(PolicyRejected):
+        ready.promote()
+    metrics = load_metrics(ready.settings.db_path, ready.evidence)
+    assert metrics.active == "rules-v1"
+    assert metrics.runs[0].regressions == 1
+    assert metrics.runs[0].savings is None
+    assert [e.action for e in metrics.events] == ["bootstrap"]
+    assert RouterVaultExporter(
+        ready.settings.vault_path, ready.settings.db_path, ready.evidence
+    ).export()
+
+
+def test_outbox_failure_rolls_back_policy_and_audit(ready: Ready) -> None:
+    import sqlite3
+
+    with closing(connect(ready.settings.db_path)) as c:
+        c.execute(
+            "CREATE TRIGGER reject_outbox BEFORE INSERT ON outbox_events "
+            "BEGIN SELECT RAISE(ABORT,'test'); END"
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        ready.promote()
+    assert ready.registry.status()["version"] == "rules-v1"
+    with closing(connect(ready.settings.db_path)) as c:
+        assert c.execute("SELECT COUNT(*) FROM routing_policies").fetchone()[0] == 1
+        assert (
+            c.execute("SELECT COUNT(*) FROM routing_policy_events").fetchone()[0] == 1
+        )

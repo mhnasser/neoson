@@ -217,6 +217,11 @@ do fornecedor. Esta opção permanece desativada até ser configurada explicitam
 
 ### Router Lab
 
+O painel `Dashboard/Router-Lab.md` no Obsidian apresenta comparações, qualidade,
+custo/cache, matrizes de confusão e histórico de promoção/rollback, sem textos privados.
+Configure `NEOSON_ROUTER_LAB_DB_PATH` para o banco do benchmark; veja a
+[atualização por eventos e reconstrução](docs/runbooks/router-lab.md#painel-no-obsidian).
+
 O laboratório começa com um [dataset público sintético](datasets/router/README.md):
 24 casos rotulados, separados em treino, validação e teste. O loader valida contratos,
 recusa duplicatas entre splits e produz um hash reproduzível. Rótulos de roteamento e

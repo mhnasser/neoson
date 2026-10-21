@@ -127,3 +127,16 @@ a sessão. Logs usam códigos, sem prompts, chaves ou conteúdo dos snapshots.
 Atualize/reinicie o processo do gateway para carregar esta implementação; o catálogo é
 consultado a cada vínculo e não exige reinício a cada aprovação. Não inicie dois processos
 de polling do Telegram ao mesmo tempo. Nenhuma candidata é aprovada pela instalação.
+
+## Conferir o ciclo no vault
+
+Em um ambiente isolado, use banco de conversas, laboratório e vault descartáveis.
+Execute o benchmark, confira a comparação em `Dashboard/Router-Lab.md`, revise e
+promova pela CLI, processe os eventos e confira a nova seleção do catálogo. Em seguida,
+execute rollback com a revisão atual e processe os eventos novamente: a seleção volta
+à anterior, mantendo a avaliação e ambas as decisões no histórico. Uma avaliação com
+regressão deve ser recusada pelo gate e não deve produzir evento de promoção.
+O [runbook do laboratório](router-lab.md#painel-no-obsidian) descreve os workers e a
+reconstrução explícita. Use novas sessões para conferir os efeitos de cada decisão;
+não copie o histórico de teste para o banco real. Testes automatizados cobrem esse ciclo
+com provedor determinístico e preços fictícios, sem chamadas externas ou gastos reais.
