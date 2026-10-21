@@ -221,8 +221,12 @@ O laboratório começa com um [dataset público sintético](datasets/router/READ
 24 casos rotulados, separados em treino, validação e teste. O loader valida contratos,
 recusa duplicatas entre splits e produz um hash reproduzível. Rótulos de roteamento e
 expectativas de qualidade/segurança ficam separados. Baseline, métricas e critérios de
-promoção estão no [ADR-009](docs/decisions/ADR-009-Router-Lab.md). Este incremento não
-executa benchmarks nem altera a política de roteamento ativa.
+promoção estão no [ADR-009](docs/decisions/ADR-009-Router-Lab.md). A CLI
+`python -m neoson_gateway.router_lab` compara regras com um perfil fixo, usando bancos
+descartáveis e ferramentas simuladas. O relatório separa qualidade, acurácia e custo;
+tentativas sem consumo conhecido não viram custo zero. Veja o
+[runbook](docs/runbooks/router-lab.md) para executar sem rede ou com API e orçamento
+explícitos. Benchmarks não alteram a política ativa.
 
 ## Configuração
 

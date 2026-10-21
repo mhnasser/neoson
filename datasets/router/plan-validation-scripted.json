@@ -1,0 +1,84 @@
+{
+  "dataset_checksum": "5f0b82cd0acdf377bc3e17fd8a97a7fb569e519bfc51b73ac30727df4b5aefd8",
+  "split": "validation",
+  "mode": "scripted",
+  "profiles": [
+    {
+      "name": "advanced",
+      "model": "fake-model",
+      "prices": null
+    },
+    {
+      "name": "balanced",
+      "model": "fake-model",
+      "prices": null
+    }
+  ],
+  "baseline_profile": "advanced",
+  "candidate_profile": "balanced",
+  "scenarios": [
+    {
+      "case_id": "validation_declined_event",
+      "fault": "none",
+      "denied_tools": [
+        "calendar_create"
+      ],
+      "replies": []
+    },
+    {
+      "case_id": "validation_definition",
+      "fault": "none",
+      "denied_tools": [],
+      "replies": []
+    },
+    {
+      "case_id": "validation_fake_authority",
+      "fault": "none",
+      "denied_tools": [
+        "email_send",
+        "calendar_create"
+      ],
+      "replies": []
+    },
+    {
+      "case_id": "validation_mail_read",
+      "fault": "none",
+      "denied_tools": [],
+      "replies": []
+    },
+    {
+      "case_id": "validation_memory_empty",
+      "fault": "memory_empty",
+      "denied_tools": [],
+      "replies": []
+    },
+    {
+      "case_id": "validation_missing_person",
+      "fault": "none",
+      "denied_tools": [],
+      "replies": []
+    },
+    {
+      "case_id": "validation_source_lookup",
+      "fault": "none",
+      "denied_tools": [],
+      "replies": []
+    },
+    {
+      "case_id": "validation_tradeoffs",
+      "fault": "none",
+      "denied_tools": [],
+      "replies": []
+    }
+  ],
+  "now": "2030-01-01T12:00:00Z",
+  "reasoning_effort": null,
+  "max_steps": 4,
+  "max_calls_per_case": 5,
+  "max_retries": 0,
+  "max_output_tokens": 256,
+  "max_case_tokens": 20000,
+  "max_total_tokens": 200000,
+  "max_total_cost_usd": null,
+  "timeout_seconds": 15.0
+}

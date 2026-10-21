@@ -100,7 +100,13 @@ Derivar rótulos das regras atuais esconderia erros. Conversas reais como corpus
 criariam risco de privacidade e não são utilizadas. Um classificador treinado agora
 adicionaria custo e dependência antes de existir evidência comparável.
 
-Esta entrega fornece apenas contrato, corpus e validação. Não cria runner, migração,
-registro de políticas, dashboard ou mecanismo de promoção; não altera `RulesRouter`,
-contrato `Router` ou a configuração de produção. A divisão permite validar o corpus antes
-de gastar APIs ou tomar decisões sobre roteamento.
+O incremento inicial forneceu contrato, corpus e validação. O executor subsequente
+compara o baseline com regras em bancos descartáveis e persiste apenas contexto público
+e métricas em `eval_runs`, com reserva idempotente antes da rede. Falhas injetadas são
+declaradas no plano, independentemente dos labels; retries sem consumo informado não
+viram custo zero. O modo simulado não autoriza estimativa de economia. Procedimento e
+limites no [runbook](../runbooks/router-lab.md).
+
+Não há registro de políticas, dashboard ou mecanismo de promoção nesta etapa. O executor
+não altera `RulesRouter`, contrato `Router` ou a configuração de produção. A divisão
+permite medir as regras antes de tomar decisões de roteamento.

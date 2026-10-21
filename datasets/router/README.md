@@ -38,5 +38,7 @@ mudanças incompatíveis de formato exigem nova `schema_version`. O corpus peque
 sustenta conclusões estatísticas ou alegações de economia em produção.
 
 Baseline, métricas e condições de promoção estão no
-[ADR-009](../../docs/decisions/ADR-009-Router-Lab.md). Runner e promoção ainda não estão
-implementados. A política ativa permanece inalterada.
+[ADR-009](../../docs/decisions/ADR-009-Router-Lab.md). O plano de exemplo
+`plan-validation-scripted.json` executa a validação sem rede e sem derivar respostas dos
+labels. Instruções e limites no [runbook](../../docs/runbooks/router-lab.md).
+A política ativa permanece inalterada; promoção ainda não está implementada.
