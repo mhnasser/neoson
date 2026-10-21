@@ -215,6 +215,15 @@ Reservas persistem após reinício. Lease expirado pode ser retomado; resposta a
 publica resultados. Erros são registrados por código, sem respostas ou mensagens privadas
 do fornecedor. Esta opção permanece desativada até ser configurada explicitamente.
 
+### Router Lab
+
+O laboratório começa com um [dataset público sintético](datasets/router/README.md):
+24 casos rotulados, separados em treino, validação e teste. O loader valida contratos,
+recusa duplicatas entre splits e produz um hash reproduzível. Rótulos de roteamento e
+expectativas de qualidade/segurança ficam separados. Baseline, métricas e critérios de
+promoção estão no [ADR-009](docs/decisions/ADR-009-Router-Lab.md). Este incremento não
+executa benchmarks nem altera a política de roteamento ativa.
+
 ## Configuração
 
 ```bash
