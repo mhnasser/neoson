@@ -243,6 +243,14 @@ def test_frontmatter_quotes_strings_safely() -> None:
     }
 
 
+@pytest.mark.parametrize("value", [8e-5, 1e-8, 1e20, -8e-5])
+def test_frontmatter_preserves_scientific_float_type(value: float) -> None:
+    head = frontmatter({"cost": value})
+    data = yaml.safe_load(head.strip("-\n"))
+    assert isinstance(data["cost"], float)
+    assert data["cost"] == value
+
+
 def test_atomic_write_skips_unchanged_content(tmp_path: Path) -> None:
     path = tmp_path / "Dashboard" / "Home.md"
 

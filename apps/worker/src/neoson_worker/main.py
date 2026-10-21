@@ -17,7 +17,7 @@ from neoson_core.infrastructure.config import (
 from neoson_core.infrastructure.db import connect, migrate
 from neoson_core.memory import curated, vault_export
 from neoson_core.skills import curation
-from neoson_core.telemetry import skill_metrics, usage, vault
+from neoson_core.telemetry import proposal_metrics, skill_metrics, usage, vault
 from neoson_core.telemetry.pricing import Price
 from neoson_worker.curation_main import limits_for
 from neoson_worker.worker import Handler, RetryPolicy, Worker
@@ -43,6 +43,12 @@ def build_handlers(settings: ServerSettings | None = None) -> dict[str, list[Han
     routes[curated.EVENT_TYPE] = memory_handlers
     routes.update(
         {event_type: list(skill_handlers) for event_type in skill_metrics.EVENT_TYPES}
+    )
+    routes.update(
+        {
+            event_type: list(skill_handlers)
+            for event_type in proposal_metrics.EVENT_TYPES
+        }
     )
     if settings is not None and settings.curation_enabled:
         scheduler = Handler(

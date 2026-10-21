@@ -66,6 +66,13 @@ corresponde à mesma versão e checksum; seus tokens e custos ficam separados do
 O custo conhecido pode ser parcial: o painel também informa quantas execuções não têm custo.
 Sem skills aprovadas, mostra o catálogo vazio. Nenhuma skill é aprovada pela exportação.
 
+O mesmo painel reúne propostas por estado e as últimas comparações base/candidata,
+incluindo regressões por caso. `Skills/Propostas/<uuid>.md` preserva cada proposta com
+tokens, custo, duração e indicação de candidata ativa. Depois de rollback, a aprovação
+continua no histórico, mas a nota indica que a candidata deixou de estar ativa. Conversas,
+instruções geradas e motivos textuais dos testes não são exportados. Veja o
+[fluxo de aprendizado e revisão](docs/runbooks/revisao-skills.md).
+
 O `neoson-robot` é o cliente da Raspberry Pi. Ele depende só de `neoson-contracts` e de um
 cliente HTTP, sem nada do servidor; para instalar apenas ele:
 

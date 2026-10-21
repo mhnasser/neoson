@@ -23,12 +23,19 @@ from neoson_core.telemetry.metrics import (
     recent_days,
     system_metrics,
 )
+from neoson_core.telemetry.proposal_metrics import (
+    STATES,
+    ProposalMetrics,
+    ReportMetrics,
+    proposal_metrics,
+)
 from neoson_core.telemetry.skill_metrics import SkillMetrics, skill_metrics
 
 HANDLER_NAME = "telemetry.vault"
 DAILY_DIR = Path("Metricas") / "Diarias"
 DASHBOARD_DIR = Path("Dashboard")
 ACTIVE_SKILLS_DIR = Path("Skills") / "Ativas"
+PROPOSALS_DIR = Path("Skills") / "Propostas"
 
 
 def write_atomic(path: Path, text: str) -> bool:
@@ -162,7 +169,10 @@ def render_system(system: SystemMetrics) -> str:
     )
 
 
-def render_skills(skills: Sequence[SkillMetrics]) -> str:
+def render_skills(
+    skills: Sequence[SkillMetrics],
+    proposals: Sequence[ProposalMetrics] = (),
+) -> str:
     rows = []
     for skill in skills:
         name = (
@@ -184,6 +194,16 @@ def render_skills(skills: Sequence[SkillMetrics]) -> str:
                 "painel": "Skills & Learning",
                 "skills_ativas": sum(s.status == "active" for s in skills),
                 "versoes_aprovadas": len(skills),
+                "propostas_total": len(proposals),
+                **{
+                    f"propostas_{state}": sum(p.status == state for p in proposals)
+                    for state in STATES
+                },
+                "regressoes_ultimas_comparacoes": sum(
+                    p.comparison.regressions
+                    for p in proposals
+                    if p.comparison is not None
+                ),
             }
         )
         + "\n# Skills & Learning\n\n"
@@ -197,7 +217,111 @@ def render_skills(skills: Sequence[SkillMetrics]) -> str:
         + "\n\nCusto conhecido pode ser parcial; Sem custo conta execuções sem preço "
         "ou ainda não processadas pelo worker. — indica dado indisponível. "
         "Avaliações com fixtures não entram nas execuções nem no custo de uso.\n"
+        + render_learning(proposals)
     )
+
+
+def render_learning(proposals: Sequence[ProposalMetrics]) -> str:
+    rows = []
+    for p in proposals:
+        result = p.comparison
+        before = "—" if result is None else f"{result.base.passed}/{result.base.cases}"
+        after = (
+            "—"
+            if result is None
+            else f"{result.candidate.passed}/{result.candidate.cases}"
+        )
+        regressions = "—" if result is None else str(result.regressions)
+        rows.append(
+            f"| [[Skills/Propostas/{p.id}\\|{p.id[:8]}]] | {p.skill_id} | "
+            f"{p.base_version} → {p.candidate_version} | {p.status} | "
+            f"{before} → {after} | {regressions} | {p.evidence_state} |"
+        )
+    return (
+        "\n## Propostas e aprendizado\n\n"
+        "| Proposta | Skill | Versões | Estado | Casos aprovados (base → candidata) | "
+        "Regressões | Evidência |\n|---|---|---|---|---|---|---|\n"
+        + ("\n".join(rows) if rows else "Nenhuma proposta registrada.")
+        + "\n\nMétricas da última comparação concluída, separadas do uso normal. "
+        "current = referência atual da revisão; "
+        "previous = comparação anterior ou histórica; "
+        "invalid = evidência indisponível por integridade; none = sem comparação. "
+        "Aprovações são decisões históricas; "
+        "a nota informa se a candidata ainda está ativa. "
+        "O painel não autoriza aprovação: a CLI revalida a base e as evidências.\n"
+    )
+
+
+def render_proposal(p: ProposalMetrics) -> str:
+    values: dict[str, object] = {
+        "tipo": "neoson-proposta",
+        "proposta_id": p.id,
+        "skill_id": p.skill_id,
+        "versao_base": p.base_version,
+        "versao_candidata": p.candidate_version,
+        "estado": p.status,
+        "criada_em": p.created_at,
+        "fontes_execucoes": p.source_runs,
+        "fontes_avaliacoes": p.source_evaluations,
+        "candidata_ativa": p.candidate_active,
+        "evidencia": p.evidence_state,
+    }
+    rows = []
+    result = p.comparison
+    if result is not None:
+        values.update(
+            {
+                "comparacao_id": result.id,
+                "comparada_em": result.created_at,
+                "comparacao_atual": result.current,
+                "regressoes": result.regressions,
+                "melhorias": result.improvements,
+            }
+        )
+        for label, metrics in (("base", result.base), ("candidata", result.candidate)):
+            values.update(_report_values(label, metrics))
+            rows.append(
+                f"| {label} | {metrics.passed}/{metrics.cases} | "
+                f"{metrics.input_tokens} / {metrics.output_tokens} / "
+                f"{metrics.cached_tokens} | "
+                f"{_usd(metrics.cost_usd)} | {metrics.seconds:.3f}s |"
+            )
+    else:
+        values.update(
+            {
+                "comparacao_id": None,
+                "comparada_em": None,
+                "comparacao_atual": False,
+                "regressoes": None,
+                "melhorias": None,
+            }
+        )
+    return (
+        frontmatter(values) + f"\n# Proposta {p.id[:8]} — {p.skill_id}\n\n"
+        f"Versão {p.base_version} → {p.candidate_version}; estado: {p.status}.\n\n"
+        f"Candidata ativa: {'sim' if p.candidate_active else 'não'}. "
+        f"Evidência: {p.evidence_state}.\n\n"
+        "| Versão | Casos aprovados | Tokens (entrada / saída / cache) | "
+        "Custo | Duração |\n"
+        "|---|---|---|---|---|\n"
+        + ("\n".join(rows) if rows else "Sem comparação disponível.")
+        + "\n\n— indica custo desconhecido. "
+        "Nenhum procedimento ou conversa é exportado. "
+        "Revisão e aprovação são feitas explicitamente pela CLI.\n\n"
+        "[[Dashboard/Skills-Learning|Skills & Learning]]\n"
+    )
+
+
+def _report_values(label: str, r: ReportMetrics) -> dict[str, object]:
+    return {
+        f"{label}_casos": r.cases,
+        f"{label}_aprovados": r.passed,
+        f"{label}_tokens_entrada": r.input_tokens,
+        f"{label}_tokens_saida": r.output_tokens,
+        f"{label}_tokens_cache": r.cached_tokens,
+        f"{label}_custo_usd": r.cost_usd,
+        f"{label}_duracao_s": r.seconds,
+    }
 
 
 def render_skill(skill: SkillMetrics) -> str:
@@ -268,6 +392,7 @@ class VaultExporter:
         today = datetime.now(self._zone).date()
         system = system_metrics(connection, completing)
         skills = skill_metrics(connection)
+        proposals = proposal_metrics(connection)
         # IDs vêm do registro validado, mas nunca confiar em um caminho vindo do DB.
         if any(re.fullmatch(r"[a-z][a-z0-9_]{1,63}", s.id) is None for s in skills):
             raise ValueError("ID de skill inválido para exportação.")
@@ -282,13 +407,21 @@ class VaultExporter:
                 model_usage(connection, today, self._zone)
             ),
             self._vault / DASHBOARD_DIR / "NeoSon-System.md": render_system(system),
-            self._vault / DASHBOARD_DIR / "Skills-Learning.md": render_skills(skills),
+            self._vault / DASHBOARD_DIR / "Skills-Learning.md": render_skills(
+                skills, proposals
+            ),
         }
         files.update(
             {
                 self._vault / ACTIVE_SKILLS_DIR / f"{s.id}.md": render_skill(s)
                 for s in skills
                 if s.status == "active"
+            }
+        )
+        files.update(
+            {
+                self._vault / PROPOSALS_DIR / f"{p.id}.md": render_proposal(p)
+                for p in proposals
             }
         )
         changed = [path for path, text in files.items() if write_atomic(path, text)]
@@ -312,7 +445,12 @@ def _yaml_value(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int | float):
-        return repr(value)
+        scalar = repr(value)
+        if isinstance(value, float) and "e" in scalar:
+            mantissa, exponent = scalar.split("e")
+            if "." not in mantissa:
+                scalar = f"{mantissa}.0e{exponent}"
+        return scalar
     if isinstance(value, list):
         return json.dumps([str(item) for item in value], ensure_ascii=False)
     return json.dumps(str(value), ensure_ascii=False)

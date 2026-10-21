@@ -112,8 +112,24 @@ Jobs têm lease, retry e estado próprios; seus eventos e execuções de fixture
 recursivamente a curadoria. Observações são dados não confiáveis, e nenhuma instrução nelas
 autoriza publicar uma skill. Geração, comparação, CLI de revisão e visualização de propostas
 são etapas separadas. O agendamento e a geração estão disponíveis no executor opcional
-`neoson-curator`; comparação e revisão são comandos explícitos. A visualização das
-propostas no vault é um incremento seguinte.
+`neoson-curator`; comparação e revisão são comandos explícitos. O worker atualiza
+as propostas no vault pelos eventos de criação, revisão, avaliação e decisão.
+
+### Visibilidade no vault
+
+`Dashboard/Skills-Learning.md` reúne estados e últimas comparações de propostas.
+`Skills/Propostas/<uuid>.md` contém apenas metadados validados e agregados numéricos:
+fontes por tipo, casos aprovados, tokens, custo, duração, regressões e melhorias.
+A projeção não lê mensagens nem snapshots de arquivos; razões textuais e instruções
+geradas não são exportadas. Evidência com hash ou estrutura inválida aparece como
+inválida, sem reproduzir seu conteúdo.
+
+A comparação anterior permanece visível durante reavaliação, identificada como anterior.
+O painel não substitui as revalidações da CLI para aprovação. Estado histórico da proposta
+e candidata atualmente ativa são campos distintos, inclusive depois de rollback.
+Comparações ficam separadas de uso normal e avaliações do catálogo. Exportação explícita
+reconstrói as notas; escrita atômica e comparação de conteúdo evitam arquivos parciais e
+regravações desnecessárias. A exportação não gera propostas nem altera o catálogo.
 
 `curation_jobs` guarda a referência à fonte e à base, tentativas, retry, lease e claim UUID.
 `curation_attempts` reserva orçamento antes de cada chamada e guarda só métricas/códigos.
