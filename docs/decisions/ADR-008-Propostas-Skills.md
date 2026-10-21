@@ -58,11 +58,47 @@ Leituras conferem identidade e checksum da cópia armazenada. O evento contém s
 | `evaluated` | `approved` | Revisão explícita e revalidação transacional da base e resultados |
 | `evaluated` | `rejected` | Decisão explícita na revisão |
 
-O armazenamento inicial implementa somente criação, consulta e rejeição de pendentes;
-os demais estados ficam reservados para a etapa de avaliação/revisão. Não existe setter
-genérico de estado. A aprovação futura usa o registro versionado, preserva rollback e
-não publica código nem faz commit automaticamente. Custo desconhecido não é custo zero;
-regressões por caso e aumento de custo/latência precisam ficar visíveis na revisão.
+A CLI `neoson-skills proposal` oferece listagem, inspeção, avaliação, rejeição e aprovação
+explícita. Não existe setter genérico de estado. A aprovação usa o registro versionado,
+preserva rollback e não publica código nem faz commit automaticamente.
+
+### Avaliação comparativa e aprovação
+
+Base e candidato executam separadamente os mesmos casos da base aprovada, em bancos
+descartáveis e com ferramentas simuladas. O candidato não é ativado na origem para ser
+avaliado. A verificação do contrato impede alterar fixtures, exemplos ou permissões,
+inclusive se alguém recalcular o checksum do candidato.
+
+`skill_proposal_comparisons` guarda os dois relatórios sem transcrições, a revisão do
+catálogo e um hash de integridade da evidência. Comparam-se resultados por ID de caso,
+tokens de entrada/saída/cache, custo conhecido e duração. Uma taxa global igual não
+esconde regressão: um caso aprovado na base e reprovado no candidato é regressão.
+A aprovação exige todos os casos do candidato aprovados e nenhuma regressão.
+
+Iniciar outra avaliação volta o estado a `pending` e troca um token de revisão; a evidência
+anterior não autoriza aprovação enquanto essa avaliação estiver em andamento. Só a
+avaliação iniciada mais recentemente pode publicar resultado. Se falhar, é preciso
+avaliar de novo; a evidência antiga não é restaurada automaticamente.
+
+A aprovação exige o UUID da comparação atual. Na mesma transação, revalida estado,
+snapshot, fixtures, proveniência, evidência, configuração e base ativa. A revisão do
+catálogo é o hash dos IDs dos eventos de aprovação/rollback/retirada da skill: trocar
+a base e voltar por rollback também invalida a avaliação antiga. O contexto contém
+apenas versão do avaliador, modelo/perfil, orçamento, política de aprovação, ferramentas
+registradas e preços; não contém caminhos ou credenciais. Alterações no contrato do
+avaliador exigem atualizar sua versão de contexto, além de novas avaliações.
+
+Custo desconhecido permanece desconhecido e exige `--accept-unknown-cost`. Aumentos de
+entrada, saída, custo conhecido ou duração exigem `--accept-resource-increase`. Essas
+opções reconhecem os dados mostrados; não permitem contornar regressão, caso reprovado,
+evidência inválida ou base alterada. As confirmações ficam em `skill_proposal_approvals`.
+
+Versões reservadas por propostas não podem usar o comando comum `approve <pasta>` para
+pular a revisão. Registro da versão ativa, estado da proposta, auditoria e eventos são
+atômicos. Repetir a mesma aprovação é idempotente se a candidata ainda estiver ativa;
+depois de rollback, repetir o comando não reativa a candidata. A biblioteca no Git
+continua inalterada. Procedimento operacional em
+[Revisão de skills](../runbooks/revisao-skills.md).
 
 ### Trabalho assíncrono
 
@@ -76,8 +112,8 @@ Jobs têm lease, retry e estado próprios; seus eventos e execuções de fixture
 recursivamente a curadoria. Observações são dados não confiáveis, e nenhuma instrução nelas
 autoriza publicar uma skill. Geração, comparação, CLI de revisão e visualização de propostas
 são etapas separadas. O agendamento e a geração estão disponíveis no executor opcional
-`neoson-curator`; comparação, CLI de revisão e visualização de propostas são incrementos
-seguintes.
+`neoson-curator`; comparação e revisão são comandos explícitos. A visualização das
+propostas no vault é um incremento seguinte.
 
 `curation_jobs` guarda a referência à fonte e à base, tentativas, retry, lease e claim UUID.
 `curation_attempts` reserva orçamento antes de cada chamada e guarda só métricas/códigos.

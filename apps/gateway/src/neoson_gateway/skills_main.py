@@ -6,10 +6,16 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from neoson_core.engine import LLMError
 from neoson_core.engine.skills import SkillNotFound
 from neoson_core.infrastructure.config import ConfigError, ServerSettings, load_settings
 from neoson_core.skills.fixtures import FixtureInvalid
 from neoson_core.skills.loader import SkillInvalid, load_library, load_skill
+from neoson_core.skills.proposals import (
+    ProposalConflict,
+    ProposalInvalid,
+    ProposalNotFound,
+)
 from neoson_core.skills.registry import (
     SkillConflict,
     SkillIntegrityError,
@@ -17,6 +23,7 @@ from neoson_core.skills.registry import (
 )
 from neoson_gateway.composition import TOOL_NAMES
 from neoson_gateway.skills_eval import evaluate_skill
+from neoson_gateway.skills_review import add_commands, execute
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -24,6 +31,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="neoson-skills", description="Skills do NeoSon (ADR-007)."
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    add_commands(commands)
     validate = commands.add_parser(
         "validate", help="valida uma skill ou toda a biblioteca"
     )
@@ -50,6 +58,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "validate":
         return _validate(args.paths, settings.skills_path)
     try:
+        if args.command == "proposal":
+            return execute(args, settings)
         if args.command == "eval":
             return _evaluate(settings, args.skill_id)
         # Valida antes de abrir o banco: uma pasta inválida não altera o registro.
@@ -85,6 +95,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         SkillConflict,
         SkillIntegrityError,
         SkillNotFound,
+        ProposalConflict,
+        ProposalInvalid,
+        ProposalNotFound,
+        LLMError,
     ) as error:
         print(f"Erro: {error}", file=sys.stderr)
         return 1

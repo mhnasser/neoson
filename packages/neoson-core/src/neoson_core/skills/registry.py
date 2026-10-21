@@ -4,11 +4,12 @@ import asyncio
 import json
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
+from uuid import UUID
 
 from neoson_core.engine import OutboxEvent
 from neoson_core.engine.skills import Skill, SkillNotFound, SkillRef
@@ -56,13 +57,39 @@ class SqliteSkillRegistry:
     async def load_approved(self, skill_id: str, version: str) -> Skill:
         return await asyncio.to_thread(self._load_approved, skill_id, version)
 
-    def approve(self, package: SkillPackage) -> SkillVersion:
+    def approve(
+        self,
+        package: SkillPackage,
+        *,
+        _connection: sqlite3.Connection | None = None,
+        _proposal_id: UUID | None = None,
+    ) -> SkillVersion:
         # Valida os mesmos bytes que serão armazenados, sem reler a pasta.
         snapshot = package_from_texts(package.path, package.contents)
         if snapshot.checksum != package.checksum:
             raise SkillIntegrityError("A cópia da skill mudou após a validação.")
         skill_id, version = snapshot.metadata.id, snapshot.metadata.version
-        with self._connection() as connection, transaction(connection):
+        if _connection is not None and not _connection.in_transaction:
+            raise ValueError("A conexão externa exige uma transação ativa.")
+        with (
+            (
+                self._connection() if _connection is None else nullcontext(_connection)
+            ) as connection,
+            transaction(connection) if _connection is None else nullcontext(connection),
+        ):
+            reserved = connection.execute(
+                "SELECT id,candidate_checksum,status FROM skill_proposals"
+                " WHERE skill_id=? AND candidate_version=?",
+                (skill_id, version),
+            ).fetchone()
+            if reserved is not None and (
+                str(_proposal_id) != reserved["id"]
+                or snapshot.checksum != reserved["candidate_checksum"]
+                or reserved["status"] != "evaluated"
+            ):
+                raise SkillConflict(
+                    "Versão reservada por proposta; use a revisão explícita."
+                )
             previous = connection.execute(
                 "SELECT * FROM skills WHERE id = ? AND version = ?",
                 (skill_id, version),

@@ -20,7 +20,7 @@ from neoson_core.telemetry.pricing import Price
 from neoson_gateway.composition import build_provider, build_tools
 
 
-async def evaluate_skill(settings: ServerSettings, skill_id: str) -> Evaluation:
+def build_evaluator(settings: ServerSettings) -> SkillEvaluator:
     provider = build_provider(settings)
 
     def catalog(path: Path) -> ToolCatalog:
@@ -50,6 +50,8 @@ async def evaluate_skill(settings: ServerSettings, skill_id: str) -> Evaluation:
         model: Price(p.input, p.output, p.cached_input)
         for model, p in settings.llm_prices.items()
     }
-    return await SkillEvaluator(settings.db_path, engine, catalog, prices).evaluate(
-        skill_id
-    )
+    return SkillEvaluator(settings.db_path, engine, catalog, prices)
+
+
+async def evaluate_skill(settings: ServerSettings, skill_id: str) -> Evaluation:
+    return await build_evaluator(settings).evaluate(skill_id)

@@ -21,6 +21,7 @@ from neoson_core.engine import (
 from neoson_core.infrastructure import outbox
 from neoson_core.infrastructure.db import connect, transaction
 from neoson_core.skills.fixtures import FixtureTools, SkillCase, load_cases
+from neoson_core.skills.loader import SkillPackage
 from neoson_core.skills.registry import SqliteSkillRegistry
 from neoson_core.telemetry.pricing import Price, cost_usd
 
@@ -88,6 +89,12 @@ class SkillEvaluator:
 
     async def evaluate(self, skill_id: str) -> Evaluation:
         package = SqliteSkillRegistry(self._path).approved_package(skill_id)
+        report = await self.evaluate_package(package)
+        self._save(report)
+        return report
+
+    async def evaluate_package(self, package: SkillPackage) -> Evaluation:
+        """Avalia snapshot em réplicas descartáveis, sem aprová-lo na origem."""
         cases = load_cases(package)
         results = []
         started = perf_counter()
@@ -132,7 +139,7 @@ class SkillEvaluator:
                         duration_seconds=elapsed,
                     )
                 )
-        report = Evaluation(
+        return Evaluation(
             uuid4(),
             package.metadata.id,
             package.metadata.version,
@@ -141,8 +148,6 @@ class SkillEvaluator:
             tuple(results),
             perf_counter() - started,
         )
-        self._save(report)
-        return report
 
     def _save(self, report: Evaluation) -> None:
         connection = connect(self._path)

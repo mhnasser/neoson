@@ -331,9 +331,22 @@ def test_migration_from_previous_schema_and_missing_proposal(
     db = tmp_path / "neoson.db"
     migrations = database.migrations()
     monkeypatch.setattr(database, "migrations", lambda: migrations[:8])
-    SqliteSkillRegistry(db).approve(load_skill(LIBRARY / "planejar_dia"))
+    SqliteSkillRegistry(db)
+    legacy = load_skill(LIBRARY / "planejar_dia")
     with closing(connect(db)) as c:
         assert schema_version(c) == 8
+        # Preparar o schema histórico sem usar a API atual, que exige schema novo.
+        c.execute(
+            "INSERT INTO skills(id,version,checksum,files_json,status,approved_at)"
+            " VALUES(?,?,?,?, 'active', ?)",
+            (
+                legacy.metadata.id,
+                legacy.metadata.version,
+                legacy.checksum,
+                json.dumps(dict(legacy.contents)),
+                "2026-10-20T12:00:00+00:00",
+            ),
+        )
     monkeypatch.setattr(database, "migrations", lambda: migrations)
     store = SqliteProposalStore(db)
     assert store.list() == []

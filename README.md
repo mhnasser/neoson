@@ -172,7 +172,11 @@ O formato e a governança estão no [ADR-007](docs/decisions/ADR-007-Skills.md).
 O armazenamento de propostas de melhoria fica separado do catálogo aprovado e preserva a
 versão de origem e suas evidências ([ADR-008](docs/decisions/ADR-008-Propostas-Skills.md)).
 O executor opcional `neoson-curator` gera candidatos a partir de falhas de skills ou
-avaliações reprovadas. Avaliação comparativa e CLI de revisão ainda são etapas futuras.
+avaliações reprovadas. A CLI `neoson-skills proposal` permite inspecionar, comparar,
+rejeitar e aprovar explicitamente uma proposta. A aprovação exige evidência válida da
+comparação atual, sem regressões e com todos os casos aprovados; ela preserva rollback.
+Custos desconhecidos e aumentos de recursos exigem reconhecimento explícito. Veja o
+[runbook de revisão](docs/runbooks/revisao-skills.md) para os comandos e bloqueios.
 
 ### Curadoria de skills
 

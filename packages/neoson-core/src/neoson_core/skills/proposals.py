@@ -144,6 +144,8 @@ class SqliteProposalStore:
             proposal_id = uuid4()
             connection.execute(
                 "INSERT INTO skill_proposals"
+                " (id,request_id,skill_id,base_version,base_checksum,candidate_version,"
+                " candidate_checksum,files_json,status,created_at)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
                 (
                     str(proposal_id),
@@ -188,9 +190,12 @@ class SqliteProposalStore:
             proposal = _get(connection, proposal_id)
             if proposal.status == ProposalStatus.REJECTED:
                 return proposal
-            if proposal.status != ProposalStatus.PENDING:
+            if proposal.status not in (
+                ProposalStatus.PENDING,
+                ProposalStatus.EVALUATED,
+            ):
                 raise ProposalConflict(
-                    "Somente proposta pendente pode ser rejeitada aqui."
+                    "Somente proposta pendente ou avaliada pode ser rejeitada."
                 )
             connection.execute(
                 "UPDATE skill_proposals SET status = 'rejected' WHERE id = ?",
