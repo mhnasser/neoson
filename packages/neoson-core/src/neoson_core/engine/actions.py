@@ -17,6 +17,7 @@ from neoson_core.engine.tools import (
     ToolCatalog,
     ToolContext,
     ToolRejected,
+    Verdict,
 )
 
 
@@ -151,6 +152,8 @@ class ActionService:
                 raise ValueError
             risk = self.tools.check(action.call)
             if risk is RiskLevel.FORBIDDEN or risk is not action.risk:
+                raise ValueError
+            if self.policy.evaluate(action.call, risk) is Verdict.DENY:
                 raise ValueError
             if action.skill is not None:
                 if self.skills is None:

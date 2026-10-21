@@ -30,6 +30,7 @@ from neoson_core.engine import (
     ToolContext,
     Usage,
     UserMessage,
+    Verdict,
 )
 from neoson_core.engine.actions import (
     ActionConflict,
@@ -624,3 +625,18 @@ def test_cancellation_keeps_uncertain_action_blocked(setup: Setup) -> None:
     asyncio.run(cancel())
     assert setup.service().store.get(setup.action.id, "http-owner").state == "unknown"
     assert len(setup.tool.effects) == 1
+
+
+def test_current_policy_denial_overrides_persisted_approval(setup: Setup) -> None:
+    class DenyPolicy(PolicyEngine):
+        def evaluate(
+            self, call: ToolCall, risk: RiskLevel, now: datetime | None = None
+        ) -> Verdict:
+            return Verdict.DENY
+
+    service = setup.service(policy=DenyPolicy())
+    service.store.decide(setup.action.id, "http-owner", True)
+    with pytest.raises(ActionConflict):
+        asyncio.run(service.resume(setup.action.id, "http-owner"))
+    assert not setup.tool.effects
+    assert service.store.get(setup.action.id, "http-owner").state == "invalid"

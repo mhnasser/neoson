@@ -12,6 +12,10 @@ Faça `neoson-backup create` antes de iniciar o novo gateway. A migration 14 acr
 `pending_actions` sem mudar sessões, mensagens ou tabelas anteriores. Backup/restauração
 do SQLite já incluem a tabela e seus argumentos privados; preserve os backups no
 armazenamento local autorizado. Não copie esses dados para Git ou vault.
+Restaurar um snapshot também restaura seus estados de aprovação. Antes de retomar
+ações de um backup, reconcilie os efeitos posteriores ao snapshot no destino; uma
+cópia antiga pode ainda mostrar como aprovada uma ação já executada. A integração real
+precisa preservar a mesma chave de idempotência no fornecedor mesmo após restauração.
 Reinicie o gateway para carregar as rotas. Não inicie outro polling do Telegram.
 
 ## Consultar e decidir
