@@ -36,6 +36,10 @@ class Tool[ArgsT: BaseModel](ABC):
     @abstractmethod
     async def run(self, arguments: ArgsT, context: ToolContext) -> ToolOutput: ...
 
+    def risk_for(self, arguments: ArgsT) -> RiskLevel:
+        """Risco desta chamada; por padrão, o da ferramenta."""
+        return self.risk
+
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name=self.name,
@@ -59,8 +63,7 @@ class ToolRegistry:
 
     def check(self, call: ToolCall) -> RiskLevel:
         tool = self._tool(call)
-        self._arguments(tool, call)
-        return tool.risk
+        return tool.risk_for(self._arguments(tool, call))
 
     async def execute(self, call: ToolCall, context: ToolContext) -> ToolResult:
         tool = self._tool(call)

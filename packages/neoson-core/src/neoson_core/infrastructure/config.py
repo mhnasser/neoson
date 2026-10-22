@@ -107,6 +107,15 @@ class ServerSettings(BaseSettings):
     microsoft_write_token_path: Path = Path("data/credentials/microsoft-write.bin")
     personal_sandbox_db_path: Path = Path("data/personal-sandbox.db")
 
+    # Leitura de páginas: desligada; fora dos domínios liberados exige aprovação.
+    web_fetch_enabled: bool = False
+    web_fetch_allowed_domains: Annotated[list[str], NoDecode] = Field(
+        default_factory=list
+    )
+    web_fetch_timeout_seconds: float = Field(default=10, gt=0, le=60)
+    web_fetch_max_bytes: int = Field(default=1_000_000, ge=1024, le=5_000_000)
+    web_fetch_max_chars: int = Field(default=6000, ge=200, le=20000)
+
     voice_provider: Literal["disabled", "fake", "openai"] = "disabled"
     voice_max_bytes: int = Field(default=1048576, ge=44, le=2097152)
     voice_max_seconds: float = Field(default=15, gt=0, le=30)
@@ -138,6 +147,24 @@ class ServerSettings(BaseSettings):
 
     gateway_host: str = "127.0.0.1"
     gateway_port: int = Field(default=8000, ge=1, le=65535)
+
+    @field_validator("web_fetch_allowed_domains", mode="before")
+    @classmethod
+    def _comma_separated_domains(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [d.strip().lower() for d in value.split(",") if d.strip()]
+        return value
+
+    @field_validator("web_fetch_allowed_domains")
+    @classmethod
+    def _plain_domains(cls, value: list[str]) -> list[str]:
+        for domain in value:
+            labels = domain.rstrip(".").split(".")
+            if len(labels) < 2 or not all(
+                label and label.replace("-", "").isalnum() for label in labels
+            ):
+                raise ValueError("domínio inválido")
+        return [d.rstrip(".") for d in value]
 
     @field_validator("telegram_allowed_users", mode="before")
     @classmethod

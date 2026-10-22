@@ -21,7 +21,7 @@ from neoson_core.skills.registry import (
     SkillIntegrityError,
     SqliteSkillRegistry,
 )
-from neoson_gateway.composition import TOOL_NAMES
+from neoson_gateway.composition import SKILL_TOOL_NAMES
 from neoson_gateway.skills_eval import evaluate_skill
 from neoson_gateway.skills_review import add_commands, execute
 
@@ -64,7 +64,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _evaluate(settings, args.skill_id)
         # Valida antes de abrir o banco: uma pasta inválida não altera o registro.
         package = (
-            load_skill(args.path, TOOL_NAMES) if args.command == "approve" else None
+            load_skill(args.path, SKILL_TOOL_NAMES)
+            if args.command == "approve"
+            else None
         )
         registry = SqliteSkillRegistry(settings.db_path)
         if package is not None:
@@ -125,11 +127,11 @@ def _validate(paths: list[Path], library: Path) -> int:
         valid, errors = [], []
         for path in paths:
             try:
-                valid.append(load_skill(path, TOOL_NAMES))
+                valid.append(load_skill(path, SKILL_TOOL_NAMES))
             except SkillInvalid as error:
                 errors.append(error)
     else:
-        valid, errors = load_library(library, TOOL_NAMES)
+        valid, errors = load_library(library, SKILL_TOOL_NAMES)
         if not valid and not errors:
             print(f"Nenhuma skill em {library}", file=sys.stderr)
             return 1

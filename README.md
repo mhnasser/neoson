@@ -130,6 +130,9 @@ Ferramentas disponíveis:
 - `calendar_create` e `email_draft`: compromisso sem convidados ou rascunho sem envio,
   com aprovação persistente por ação e destino separado, desativado por padrão.
   Veja o [runbook de escrita limitada](docs/runbooks/personal-writes.md).
+- `web_fetch`: lê o texto de uma página http(s), bloqueando a rede interna; fora dos
+  domínios liberados pede aprovação da URL. Desativada por padrão; veja o
+  [runbook](docs/runbooks/web-fetch.md) e o [ADR-018](docs/decisions/ADR-018-Web-Fetch.md).
 - `delegate`: análise delegada a uma chamada sem ferramentas, só com a tarefa e o trecho
   escolhidos, com tentativas, prazo e tokens limitados por execução e custo contabilizado
   inclusive em falhas. Desativada por padrão; veja o [runbook](docs/runbooks/delegation.md)

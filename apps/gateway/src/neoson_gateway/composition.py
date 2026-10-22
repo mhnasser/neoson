@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from neoson_core.engine import (
@@ -48,7 +49,8 @@ from neoson_core.tools.personal_sandbox import (
     SqlitePersonalSandbox,
 )
 from neoson_core.tools.personal_write import CalendarCreate, EmailDraft
-from neoson_core.tools.registry import ToolRegistry
+from neoson_core.tools.registry import Tool, ToolRegistry
+from neoson_core.tools.web_fetch import WebFetch, WebFetcher
 from neoson_gateway.routing_runtime import (
     BoundProvider,
     binding_for,
@@ -66,6 +68,9 @@ TOOL_NAMES = (
     MemorySave.name,
     MemoryForget.name,
 )
+# Registradas só quando ligadas; skills podem declará-las mesmo assim.
+OPTIONAL_TOOL_NAMES = (WebFetch.name,)
+SKILL_TOOL_NAMES = TOOL_NAMES + OPTIONAL_TOOL_NAMES
 
 
 def build_engine(settings: ServerSettings) -> Engine:
@@ -211,22 +216,32 @@ def build_tools(
         "fake": "sandbox local simulado, sem efeito na conta real",
         "microsoft": "conta Microsoft do consentimento local de escrita",
     }[settings.personal_write_provider]
-    return ToolRegistry(
-        [
-            CalendarList(calendar),
-            EmailList(email),
-            CalendarCreate(calendar_writer, destination),
-            EmailDraft(draft_writer, destination),
-            MemorySearch(
-                SqliteHistorySearch(settings.db_path),
-                ZoneInfo(settings.timezone),
-                # Só fatos revisados; desligado, a ferramenta fica como antes.
-                graph_store(settings) if settings.memory_graph_enabled else None,
-            ),
-            MemorySave(memory),
-            MemoryForget(memory),
-        ]
-    )
+    tools: list[Tool[Any]] = [
+        CalendarList(calendar),
+        EmailList(email),
+        CalendarCreate(calendar_writer, destination),
+        EmailDraft(draft_writer, destination),
+        MemorySearch(
+            SqliteHistorySearch(settings.db_path),
+            ZoneInfo(settings.timezone),
+            # Só fatos revisados; desligado, a ferramenta fica como antes.
+            graph_store(settings) if settings.memory_graph_enabled else None,
+        ),
+        MemorySave(memory),
+        MemoryForget(memory),
+    ]
+    if settings.web_fetch_enabled:
+        tools.append(
+            WebFetch(
+                WebFetcher(
+                    timeout_seconds=settings.web_fetch_timeout_seconds,
+                    max_bytes=settings.web_fetch_max_bytes,
+                ),
+                settings.web_fetch_allowed_domains,
+                settings.web_fetch_max_chars,
+            )
+        )
+    return ToolRegistry(tools)
 
 
 def microsoft_oauth(

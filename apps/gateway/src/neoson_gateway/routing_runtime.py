@@ -61,6 +61,16 @@ def runtime_hash(settings: ServerSettings) -> str:
             ),
             **(
                 {
+                    "web_fetch": {
+                        "version": "web-fetch-v1",
+                        "domains": sorted(settings.web_fetch_allowed_domains),
+                    }
+                }
+                if settings.web_fetch_enabled
+                else {}
+            ),
+            **(
+                {
                     "delegation": {
                         "attempts": settings.max_subagents,
                         "timeout": settings.delegation_timeout_seconds,

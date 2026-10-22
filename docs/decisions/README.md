@@ -25,3 +25,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-015](ADR-015-Graph-Extraction.md) | Extração de fatos para o grafo com revisão explícita | accepted |
 | [ADR-016](ADR-016-Hybrid-Retrieval.md) | Recuperação híbrida pela ferramenta `memory_search` | accepted |
 | [ADR-017](ADR-017-Neo4j-Adapter.md) | Adaptador Neo4j opcional para o grafo | accepted |
+| [ADR-018](ADR-018-Web-Fetch.md) | Leitura de páginas web com proteção de rede e aprovação | accepted |
