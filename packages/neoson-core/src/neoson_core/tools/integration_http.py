@@ -25,6 +25,8 @@ async def request_json(
     params: dict[str, str] | None = None,
     data: dict[str, str] | None = None,
     oauth: bool = False,
+    json_body: dict[str, object] | None = None,
+    success_statuses: tuple[int, ...] = (200,),
 ) -> dict[str, Any]:
     try:
         async with factory() as http:
@@ -34,6 +36,7 @@ async def request_json(
                 headers=headers,
                 params=params,
                 data=data,
+                json=json_body,
                 follow_redirects=False,
                 timeout=10,
             ) as response:
@@ -41,7 +44,7 @@ async def request_json(
                     raise IntegrationError("rate_limit")
                 if response.status_code in (401, 403):
                     raise IntegrationError("credentials")
-                if response.status_code != 200 and not (
+                if response.status_code not in success_statuses and not (
                     oauth and response.status_code == 400
                 ):
                     raise IntegrationError("provider")

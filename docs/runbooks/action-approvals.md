@@ -3,8 +3,9 @@
 O modelo propõe uma ferramenta; apenas uma decisão autenticada do proprietário autoriza
 a chamada concreta salva. O fluxo está disponível no gateway com provedor `openai`,
 inclusive quando um provedor fake é injetado pelos testes. O modo `echo` não cria ações
-e não monta estes endpoints. As ferramentas atuais de produção continuam as mesmas;
-o teste de escrita usa uma ferramenta fake, sem efeitos externos.
+e não monta estes endpoints. `calendar_create` e `email_draft` oferecem escritas
+limitadas com destino desativado por padrão, sandbox ou Microsoft por escolha
+explícita; veja o [runbook de escrita](personal-writes.md). Testes não usam contas reais.
 
 ## Atualizar a instalação
 
@@ -26,7 +27,8 @@ de comandos. Não compartilhe esse token: a instalação possui um só propriet�
 
 1. Envie `POST /api/v1/messages` normalmente. Se a resposta tiver `needs_approval`, guarde
    o `run_id` e consulte `GET /api/v1/runs/{run_id}/actions`.
-2. Revise ferramenta, argumentos completos, fingerprint, sessão, execução e validade.
+2. Revise ferramenta, `tool_description` (inclui destino/simulação quando disponível),
+   argumentos completos, fingerprint, sessão, execução e validade.
    `GET /api/v1/actions/{id}` recupera o mesmo registro. A resposta usa `Cache-Control:
    no-store`; não encaminhe seu corpo a logs ou ferramentas de telemetria.
 3. Para aprovar, envie `POST /api/v1/actions/{id}/decision` com `{"approve": true}`.

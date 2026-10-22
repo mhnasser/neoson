@@ -19,3 +19,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-009](ADR-009-Router-Lab.md) | Dataset e avaliação de políticas de roteamento | accepted |
 | [ADR-010](ADR-010-Voice.md) | Portas de fala e transporte de áudio limitado | accepted |
 | [ADR-011](ADR-011-Personal-Integrations.md) | Leitura de calendário/e-mail com OAuth mínimo | accepted |
+| [ADR-012](ADR-012-Personal-Writes.md) | Compromissos e rascunhos após revisão concreta | accepted |

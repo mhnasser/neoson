@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Protocol
+from uuid import UUID
 
 
 class IntegrationError(Exception):
@@ -42,3 +43,29 @@ class CalendarReader(Protocol):
 
 class EmailReader(Protocol):
     async def list_mail(self, limit: int) -> ReadPage[MailItem]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PersonalEffect:
+    id: str
+    simulated: bool = False
+
+
+class CalendarWriter(Protocol):
+    async def create_event(
+        self,
+        title: str,
+        start: datetime,
+        end: datetime,
+        action_id: UUID,
+    ) -> PersonalEffect: ...
+
+
+class EmailDraftWriter(Protocol):
+    async def create_draft(
+        self,
+        recipient: str,
+        subject: str,
+        body: str,
+        action_id: UUID,
+    ) -> PersonalEffect: ...

@@ -23,7 +23,7 @@ from neoson_core.engine.tools import fingerprint
 HTTP_OWNER = "http-owner"
 
 
-def response(view: ActionView) -> ActionResponse:
+def response(view: ActionView, description: str | None = None) -> ActionResponse:
     a = view.action
     return ActionResponse(
         id=a.id,
@@ -34,12 +34,26 @@ def response(view: ActionView) -> ActionResponse:
         fingerprint=fingerprint(a.call),
         expires_at=a.expires_at,
         state=cast(ActionState, view.state),
+        tool_description=description,
     )
 
 
 def actions_router(
     service: ActionService, auth: Callable[..., Awaitable[None]]
 ) -> APIRouter:
+    def describe(view: ActionView) -> ActionResponse:
+        description = None
+        if view.action.context == service.context:
+            description = next(
+                (
+                    s.description
+                    for s in service.tools.specs()
+                    if s.name == view.action.call.name
+                ),
+                None,
+            )
+        return response(view, description)
+
     def no_cache(response: Response) -> None:
         response.headers["Cache-Control"] = "no-store"
 
@@ -51,20 +65,20 @@ def actions_router(
 
     @router.get("/runs/{run_id}/actions", response_model=list[ActionResponse])
     async def list_actions(run_id: UUID) -> list[ActionResponse]:
-        return [response(v) for v in service.store.for_run(run_id, HTTP_OWNER)]
+        return [describe(v) for v in service.store.for_run(run_id, HTTP_OWNER)]
 
     @router.get("/actions/{action_id}", response_model=ActionResponse)
     async def get_action(action_id: UUID) -> ActionResponse:
-        return response(service.store.get(action_id, HTTP_OWNER))
+        return describe(service.store.get(action_id, HTTP_OWNER))
 
     @router.post("/actions/{action_id}/decision", response_model=ActionResponse)
     async def decide(action_id: UUID, body: ActionDecision) -> ActionResponse:
-        return response(service.store.decide(action_id, HTTP_OWNER, body.approve))
+        return describe(service.store.decide(action_id, HTTP_OWNER, body.approve))
 
     @router.post("/actions/{action_id}/resume", response_model=ActionResponse)
     async def resume(
         action_id: UUID, body: ActionResume | None = None
     ) -> ActionResponse:
-        return response(await service.resume(action_id, HTTP_OWNER))
+        return describe(await service.resume(action_id, HTTP_OWNER))
 
     return router

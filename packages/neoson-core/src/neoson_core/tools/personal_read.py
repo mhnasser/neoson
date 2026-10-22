@@ -16,6 +16,7 @@ from neoson_core.engine.tools import RiskLevel, ToolContext
 from neoson_core.tools.registry import Tool, ToolOutput
 
 ERRORS = {
+    "approval": "A escrita exige uma ação aprovada pelo fluxo autenticado de revisão.",
     "disabled": "Integração desativada. Selecione um fornecedor explicitamente.",
     "credentials": "Credencial indisponível ou expirada. Refaça o login local.",
     "credentials_busy": "Credencial em uso por outro processo. Tente novamente depois.",

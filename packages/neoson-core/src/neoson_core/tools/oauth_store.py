@@ -22,6 +22,7 @@ class OAuthTokens:
     refresh_token: str = field(repr=False)
     expires_at: float
     scopes: tuple[str, ...]
+    binding: str = ""
 
 
 class _Blob(ctypes.Structure):
@@ -124,6 +125,7 @@ class LocalTokenStore:
                 refresh_token=body["refresh_token"],
                 expires_at=float(body["expires_at"]),
                 scopes=tuple(body["scopes"]),
+                binding=body.get("binding", ""),
             )
         except (OSError, ValueError, KeyError, TypeError):
             raise IntegrationError("credentials") from None

@@ -1,11 +1,26 @@
 """Composition root para perfis vinculados; chaves nunca entram no contexto público."""
 
+from uuid import UUID
+
 from neoson_core.engine import LLMProvider, LLMRequest, LLMResponse
+from neoson_core.engine.integrations import IntegrationError
 from neoson_core.infrastructure.config import ServerSettings
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.lab_plan import digest
 from neoson_core.routing.policy_config import ModelBinding
 from neoson_core.routing.policy_registry import PolicyRegistry
+from neoson_core.tools.oauth_store import LocalTokenStore
+
+
+def write_binding(settings: ServerSettings) -> str:
+    if settings.personal_write_provider != "microsoft":
+        return settings.personal_write_provider
+    try:
+        tokens = LocalTokenStore(settings.microsoft_write_token_path).load()
+        UUID(tokens.binding)
+        return tokens.binding
+    except (IntegrationError, ValueError, TypeError):
+        return "unavailable"
 
 
 def binding_for(settings: ServerSettings) -> ModelBinding:
@@ -28,10 +43,15 @@ def runtime_hash(settings: ServerSettings) -> str:
             "approval": settings.approval_mode,
             "history": settings.history_max_messages,
             "timezone": settings.timezone,
-            "tools_version": "gateway-tools-v2",
+            "tools_version": "gateway-tools-v3",
             "personal_provider": settings.personal_provider,
             "microsoft_client": settings.microsoft_client_id,
             "microsoft_tenant": settings.microsoft_tenant,
+            "personal_write_provider": settings.personal_write_provider,
+            "personal_write_binding": write_binding(settings),
+            "personal_sandbox": str(settings.personal_sandbox_db_path.resolve())
+            if settings.personal_write_provider == "fake"
+            else None,
             "runtime_version": "session-routing-v1",
         }
     )

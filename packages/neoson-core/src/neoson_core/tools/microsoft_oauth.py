@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from neoson_core.engine.integrations import IntegrationError
 from neoson_core.tools.integration_http import (
@@ -17,6 +17,7 @@ from neoson_core.tools.integration_http import (
 from neoson_core.tools.oauth_store import LocalTokenStore, OAuthTokens
 
 READ_SCOPES = frozenset({"Calendars.ReadBasic", "Mail.ReadBasic"})
+WRITE_SCOPES = frozenset({"Calendars.ReadWrite", "Mail.ReadWrite"})
 LOGIN_SCOPES = " ".join(
     ["https://graph.microsoft.com/" + scope for scope in sorted(READ_SCOPES)]
     + ["offline_access"]
@@ -40,6 +41,8 @@ class MicrosoftOAuth:
         *,
         factory: ClientFactory = client_factory,
         clock: Callable[[], float] = time.time,
+        write: bool = False,
+        expected_binding: str | None = None,
     ) -> None:
         # IDs nunca se tornam componentes arbitrários de URL.
         try:
@@ -52,6 +55,12 @@ class MicrosoftOAuth:
         self.factory, self.clock = factory, clock
         self.base = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/"
         self._lock = asyncio.Lock()
+        self.scopes = WRITE_SCOPES if write else READ_SCOPES
+        self.login_scopes = " ".join(
+            ["https://graph.microsoft.com/" + scope for scope in sorted(self.scopes)]
+            + ["offline_access"]
+        )
+        self.expected_binding = expected_binding
 
     async def _post(self, method: str, data: dict[str, str]) -> dict[str, Any]:
         return await request_json(
@@ -64,7 +73,7 @@ class MicrosoftOAuth:
 
     async def begin_login(self) -> DeviceLogin:
         async with asyncio.timeout(15):
-            body = await self._post("devicecode", {"scope": LOGIN_SCOPES})
+            body = await self._post("devicecode", {"scope": self.login_scopes})
         try:
             code = body["device_code"]
             user_code = body["user_code"]
@@ -123,8 +132,12 @@ class MicrosoftOAuth:
         if (
             tokens.client_id != self.client_id
             or tokens.tenant != self.tenant
-            or not READ_SCOPES <= set(tokens.scopes)
-            or not set(tokens.scopes) <= READ_SCOPES | {"offline_access"}
+            or not self.scopes <= set(tokens.scopes)
+            or not set(tokens.scopes) <= self.scopes | {"offline_access"}
+            or (
+                self.expected_binding is not None
+                and tokens.binding != self.expected_binding
+            )
             or not isinstance(tokens.access_token, str)
             or not tokens.access_token
             or not math.isfinite(tokens.expires_at)
@@ -139,14 +152,19 @@ class MicrosoftOAuth:
             {
                 "grant_type": "refresh_token",
                 "refresh_token": tokens.refresh_token,
-                "scope": LOGIN_SCOPES,
+                "scope": self.login_scopes,
             },
         )
-        refreshed = self._tokens(body, tokens.refresh_token)
+        refreshed = self._tokens(body, tokens.refresh_token, tokens.binding)
         self.store.save(refreshed)
         return refreshed.access_token
 
-    def _tokens(self, body: dict[str, Any], previous_refresh: str = "") -> OAuthTokens:
+    def _tokens(
+        self,
+        body: dict[str, Any],
+        previous_refresh: str = "",
+        previous_binding: str = "",
+    ) -> OAuthTokens:
         try:
             access = body["access_token"]
             refresh = body.get("refresh_token", previous_refresh)
@@ -157,8 +175,8 @@ class MicrosoftOAuth:
             )
             if (
                 body.get("token_type", "").lower() != "bearer"
-                or not READ_SCOPES <= scopes
-                or not scopes <= READ_SCOPES | {"offline_access"}
+                or not self.scopes <= scopes
+                or not scopes <= self.scopes | {"offline_access"}
                 or not isinstance(access, str)
                 or not 1 <= len(access) <= 32768
                 or not isinstance(refresh, str)
@@ -174,6 +192,7 @@ class MicrosoftOAuth:
                 refresh,
                 self.clock() + expires,
                 tuple(sorted(scopes)),
+                previous_binding or str(uuid4()),
             )
         except (KeyError, TypeError, ValueError, AttributeError):
             raise IntegrationError("credentials") from None

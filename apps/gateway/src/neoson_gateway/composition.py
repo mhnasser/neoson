@@ -16,6 +16,8 @@ from neoson_core.engine import (
 from neoson_core.engine.actions import ActionService, action_context
 from neoson_core.engine.integrations import (
     CalendarReader,
+    CalendarWriter,
+    EmailDraftWriter,
     EmailReader,
     IntegrationError,
 )
@@ -34,16 +36,29 @@ from neoson_core.tools.memory_facts import MemoryForget, MemorySave
 from neoson_core.tools.memory_search import MemorySearch
 from neoson_core.tools.microsoft_oauth import MicrosoftOAuth
 from neoson_core.tools.microsoft_read import MicrosoftPersonalReader
+from neoson_core.tools.microsoft_write import MicrosoftPersonalWriter
 from neoson_core.tools.oauth_store import LocalTokenStore
 from neoson_core.tools.personal_fake import DisabledPersonalReader, FakePersonalReader
 from neoson_core.tools.personal_read import CalendarList, EmailList
+from neoson_core.tools.personal_sandbox import (
+    DisabledPersonalWriter,
+    SqlitePersonalSandbox,
+)
+from neoson_core.tools.personal_write import CalendarCreate, EmailDraft
 from neoson_core.tools.registry import ToolRegistry
-from neoson_gateway.routing_runtime import BoundProvider, binding_for, runtime_hash
+from neoson_gateway.routing_runtime import (
+    BoundProvider,
+    binding_for,
+    runtime_hash,
+    write_binding,
+)
 
 # Ferramentas que o gateway registra; as skills só podem declarar estas.
 TOOL_NAMES = (
     CalendarList.name,
     EmailList.name,
+    CalendarCreate.name,
+    EmailDraft.name,
     MemorySearch.name,
     MemorySave.name,
     MemoryForget.name,
@@ -151,10 +166,18 @@ def build_tools(
     settings: ServerSettings, memory: CuratedMemory, clock: Callable[[], datetime]
 ) -> ToolRegistry:
     calendar, email = personal_readers(settings, clock)
+    calendar_writer, draft_writer = personal_writers(settings)
+    destination = {
+        "disabled": "integração desativada",
+        "fake": "sandbox local simulado, sem efeito na conta real",
+        "microsoft": "conta Microsoft do consentimento local de escrita",
+    }[settings.personal_write_provider]
     return ToolRegistry(
         [
             CalendarList(calendar),
             EmailList(email),
+            CalendarCreate(calendar_writer, destination),
+            EmailDraft(draft_writer, destination),
             MemorySearch(
                 SqliteHistorySearch(settings.db_path), ZoneInfo(settings.timezone)
             ),
@@ -164,14 +187,31 @@ def build_tools(
     )
 
 
-def microsoft_oauth(settings: ServerSettings) -> MicrosoftOAuth:
+def microsoft_oauth(
+    settings: ServerSettings,
+    *,
+    write: bool = False,
+    bind: bool = False,
+) -> MicrosoftOAuth:
     if not settings.microsoft_client_id:
         raise ConfigError("NEOSON_MICROSOFT_CLIENT_ID é obrigatório para Microsoft.")
     try:
+        if (
+            write
+            and settings.microsoft_write_token_path.resolve()
+            == settings.microsoft_token_path.resolve()
+        ):
+            raise ConfigError("Caches OAuth de leitura e escrita devem ser separados.")
         return MicrosoftOAuth(
             settings.microsoft_client_id,
             settings.microsoft_tenant,
-            LocalTokenStore(settings.microsoft_token_path),
+            LocalTokenStore(
+                settings.microsoft_write_token_path
+                if write
+                else settings.microsoft_token_path
+            ),
+            write=write,
+            expected_binding=write_binding(settings) if bind else None,
         )
     except IntegrationError:
         raise ConfigError(
@@ -195,6 +235,23 @@ def personal_readers(
         microsoft_oauth(settings), ZoneInfo(settings.timezone)
     )
     return reader, reader
+
+
+def personal_writers(
+    settings: ServerSettings,
+) -> tuple[CalendarWriter, EmailDraftWriter]:
+    if settings.personal_write_provider == "disabled":
+        disabled = DisabledPersonalWriter()
+        return disabled, disabled
+    if settings.personal_write_provider == "fake":
+        if settings.env == "production":
+            raise ConfigError("Sandbox fake não é permitido em produção.")
+        if settings.personal_sandbox_db_path.resolve() == settings.db_path.resolve():
+            raise ConfigError("Sandbox exige banco separado das conversas.")
+        sandbox = SqlitePersonalSandbox(settings.personal_sandbox_db_path)
+        return sandbox, sandbox
+    writer = MicrosoftPersonalWriter(microsoft_oauth(settings, write=True, bind=True))
+    return writer, writer
 
 
 def api_token(settings: ServerSettings) -> str:

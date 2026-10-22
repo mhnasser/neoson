@@ -36,3 +36,4 @@ class ActionResponse(BaseModel):
     fingerprint: str
     expires_at: datetime
     state: ActionState
+    tool_description: str | None = None

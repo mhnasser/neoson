@@ -67,3 +67,7 @@ O conteúdo devolvido ao modelo pode fazer parte do histórico SQLite da convers
 que deve ser tratado como privado; o vault recebe somente agregados.
 
 Operação e limites no [runbook](../runbooks/personal-integrations.md).
+
+O [ADR-012](ADR-012-Personal-Writes.md) acrescenta um modo de escrita separado,
+com seleção, login e cache próprios. O cache de leitura mantém a validação dos
+escopos mínimos acima e recusa tokens com escopos de escrita.
