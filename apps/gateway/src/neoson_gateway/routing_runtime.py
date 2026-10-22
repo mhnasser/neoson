@@ -53,7 +53,12 @@ def runtime_hash(settings: ServerSettings) -> str:
             if settings.personal_write_provider == "fake"
             else None,
             "runtime_version": "session-routing-v1",
-            # Só entra ligada: o hash das instalações sem delegação não muda.
+            # Opcionais só entram ligados: o hash das instalações sem eles não muda.
+            **(
+                {"memory_graph": "graph-search-v1"}
+                if settings.memory_graph_enabled
+                else {}
+            ),
             **(
                 {
                     "delegation": {

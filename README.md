@@ -134,7 +134,9 @@ Ferramentas disponíveis:
   inclusive em falhas. Desativada por padrão; veja o [runbook](docs/runbooks/delegation.md)
   e o [ADR-013](docs/decisions/ADR-013-Delegation.md).
 - `memory_search`: busca em conversas anteriores (índice FTS5 no SQLite, sem diferenciar acentos)
-  e devolve trechos com data e autor, para o modelo citar a fonte.
+  e devolve trechos com data e autor, para o modelo citar a fonte. Com o grafo de conhecimento
+  ligado, acrescenta fatos revisados com fonte e data; veja o
+  [runbook do grafo](docs/runbooks/knowledge-graph.md).
 - `memory_save` e `memory_forget`: memória curada. Guardam fatos e preferências que o usuário pediu
   para lembrar, com a origem (sessão e data). Os fatos ativos entram no prompt de sistema, marcados
   como dados, e aparecem no vault em `Memoria/Usuario/` e `Memoria/NeoSon/` para revisão. Para

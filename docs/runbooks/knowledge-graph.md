@@ -51,6 +51,15 @@ dúvida.
 Um fato retirado não volta. Ativar não muda outros fatos: versões de fontes diferentes
 continuam separadas.
 
+## Usar nas respostas
+
+Com o grafo ligado, a ferramenta `memory_search` acrescenta aos trechos de conversa os
+fatos **ativos** das pessoas, projetos e temas citados na pergunta, com fonte, data e
+confiança ([ADR-016](../decisions/ADR-016-Hybrid-Retrieval.md)). Pendentes, retirados e
+fatos com validade vencida não aparecem. Reinicie o gateway e o bot depois de ligar: a
+descrição da ferramenta muda e o hash de runtime também, o que invalida ações pendentes
+criadas antes.
+
 ## Esquecer
 
 Quando uma memória é esquecida (`memory_forget`), o worker cria um job de retirada. O

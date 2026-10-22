@@ -23,3 +23,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-013](ADR-013-Delegation.md) | Delegação interna com contexto e orçamento isolados | accepted |
 | [ADR-014](ADR-014-Knowledge-Graph.md) | Grafo de conhecimento com proveniência, primeiro em SQLite | accepted |
 | [ADR-015](ADR-015-Graph-Extraction.md) | Extração de fatos para o grafo com revisão explícita | accepted |
+| [ADR-016](ADR-016-Hybrid-Retrieval.md) | Recuperação híbrida pela ferramenta `memory_search` | accepted |
