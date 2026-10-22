@@ -46,6 +46,14 @@ class ServerSettings(BaseSettings):
 
     env: Literal["development", "test", "production"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    # text mantém o formato de antes; json escreve um objeto por linha.
+    log_format: Literal["text", "json"] = "text"
+    log_file: Path | None = None
+    log_max_bytes: int = Field(default=5_000_000, ge=10_000, le=500_000_000)
+    log_backups: int = Field(default=5, ge=1, le=50)
+    # Falhas temporárias seguidas do modelo que abrem o circuito (0 desliga).
+    llm_circuit_failures: NonNegativeInt = 5
+    llm_circuit_reset_seconds: float = Field(default=30, gt=0, le=3600)
 
     llm_provider: Literal["openai", "echo"] = "openai"
     llm_model: str | None = None

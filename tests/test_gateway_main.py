@@ -28,7 +28,10 @@ def test_main_starts_uvicorn_with_configured_host_port_and_log_level(
 
     gateway_main.main()
 
-    assert calls == [{"host": "127.0.0.1", "port": 9123, "log_level": "warning"}]
+    # log_config=None: os logs do uvicorn seguem o formato do NeoSon.
+    assert calls == [
+        {"host": "127.0.0.1", "port": 9123, "log_level": "warning", "log_config": None}
+    ]
 
 
 def test_main_exits_with_clear_message_on_invalid_configuration(

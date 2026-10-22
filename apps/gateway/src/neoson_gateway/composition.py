@@ -15,6 +15,7 @@ from neoson_core.engine import (
     PolicyEngine,
 )
 from neoson_core.engine.actions import ActionService, action_context
+from neoson_core.engine.circuit import CircuitBreakerProvider
 from neoson_core.engine.delegation import DelegationLimits
 from neoson_core.engine.integrations import (
     CalendarReader,
@@ -86,7 +87,13 @@ def build_engine(settings: ServerSettings) -> Engine:
         )
     binding = binding_for(settings)
     registry = PolicyRegistry(settings.db_path)
-    provider = BoundProvider(settings, registry)
+    provider: LLMProvider = BoundProvider(settings, registry)
+    if settings.llm_circuit_failures:
+        provider = CircuitBreakerProvider(
+            provider,
+            failures=settings.llm_circuit_failures,
+            reset_seconds=settings.llm_circuit_reset_seconds,
+        )
     zone = ZoneInfo(settings.timezone)
     memory = SqliteCuratedMemory(settings.db_path)
 

@@ -159,6 +159,13 @@ segue o formato `ErrorResponse`:
 
 Documentação interativa (OpenAPI) em `/docs`.
 
+### Logs e resiliência
+
+Gateway, bot e worker podem registrar logs em JSON, com segredos conhecidos mascarados e
+arquivo com rotação. Um circuit breaker para de chamar o modelo depois de falhas
+temporárias seguidas e testa de novo após um intervalo. Veja
+[`docs/runbooks/logs-e-resiliencia.md`](docs/runbooks/logs-e-resiliencia.md).
+
 ### Backup e restauração
 
 ```bash

@@ -1,12 +1,12 @@
 """Comando `neoson-telegram`: o bot usa o mesmo motor e o mesmo banco do gateway."""
 
 import asyncio
-import logging
 import signal
 
 import httpx2
 
 from neoson_core.infrastructure.config import ConfigError, ServerSettings, load_settings
+from neoson_core.infrastructure.logs import configure_logging
 from neoson_core.memory.channel_sessions import SqliteChannelSessions
 from neoson_gateway.composition import build_engine
 from neoson_gateway.telegram import TelegramApi, TelegramBot, TelegramError
@@ -50,13 +50,15 @@ def main() -> None:
         telegram_settings(settings)
     except ConfigError as error:
         raise SystemExit(str(error)) from None
-    logging.basicConfig(
-        level=settings.log_level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    # Também silencia httpx2/httpcore2: a URL da Bot API contém o token.
+    configure_logging(
+        settings.log_level,
+        "telegram",
+        fmt=settings.log_format,
+        file=settings.log_file,
+        max_bytes=settings.log_max_bytes,
+        backups=settings.log_backups,
     )
-    # O httpx2 registra URLs em INFO; a URL da Bot API contém o token.
-    for name in ("httpx2", "httpcore2"):
-        logging.getLogger(name).setLevel(logging.WARNING)
     try:
         asyncio.run(serve(settings))
     except TelegramError as error:

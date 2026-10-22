@@ -15,6 +15,7 @@ from neoson_core.infrastructure.config import (
     load_settings,
 )
 from neoson_core.infrastructure.db import connect, migrate
+from neoson_core.infrastructure.logs import configure_logging
 from neoson_core.memory import curated, graph_extraction, vault_export
 from neoson_core.skills import curation
 from neoson_core.telemetry import (
@@ -125,9 +126,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         settings = load_settings()
     except ConfigError as error:
         raise SystemExit(str(error)) from None
-    logging.basicConfig(
-        level=settings.log_level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    configure_logging(
+        settings.log_level,
+        "worker",
+        fmt=settings.log_format,
+        file=settings.log_file,
+        max_bytes=settings.log_max_bytes,
+        backups=settings.log_backups,
     )
 
     if args.export_vault:
