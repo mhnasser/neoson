@@ -16,8 +16,8 @@ uv run --no-sync python -m neoson_robot.voice_main --simulate --activate
 ```
 
 Sem `--activate`, fica em idle e não captura nem envia. Com a flag, faz um único pedido
-e encerra. `--simulate` é obrigatório: produz silêncio, playback sem som e display em
-memória. O terminal mostra somente estado/aviso. A captura fake envia
+e encerra. `--simulate` produz silêncio, playback sem som e display em memória; o
+modo real está em "Dispositivos reais" abaixo. O terminal mostra somente estado/aviso. A captura fake envia
 `X-Neoson-Simulated: true`; o servidor rejeita se não estiver simulado.
 
 `--gateway-url` escolhe o servidor; `--state-file` escolhe o estado local, padrão
@@ -98,6 +98,30 @@ teste é no processo. Não comprova reconhecimento, fala, rede da Pi ou hardware
 Consulte o [inventário](../raspberry-pi-os.md); drivers, volume, GPIO e validação física
 continuam separados. Não há alteração de hardware necessária para a simulação.
 
+## Dispositivos reais (PipeWire)
+
+Na Pi, o Robot pode usar o microfone e a saída de som padrão do PipeWire, pelos comandos
+`pw-record` e `pw-play` que já vêm com o sistema (sem dependência Python nova):
+
+```bash
+uv run --no-sync python -m neoson_robot.voice_main --device pipewire
+uv run --no-sync python -m neoson_robot.voice_main --device pipewire --activate --seconds 5
+```
+
+`--simulate` e `--device pipewire` são exclusivos, e um dos dois é obrigatório. Sem
+`--activate`, nada é capturado. A captura grava por `--seconds` (até 15 s; o servidor
+aceita até `NEOSON_VOICE_MAX_SECONDS`) em PCM16 mono de 16 kHz, num WAV temporário
+privado que é apagado depois do envio. A captura termina com SIGINT; se o processo não
+sair, é forçado. A reprodução usa outro arquivo temporário e para no cancelamento ou se
+passar do tempo esperado. Mensagens de erro são fixas e o terminal mostra só estado e
+aviso. Como a captura é real, use o gateway com voz real (`NEOSON_VOICE_PROVIDER=openai`). A
+rota real recusa captura simulada; a rota simulada aceita captura real, mas só responde
+silêncio, sem reconhecer a fala.
+
+O dispositivo usado é o padrão do PipeWire; confira com `wpctl status` se é o microfone
+USB do inventário. Ainda não há detecção de fala nem botão físico: a ativação é o
+`--activate` da linha de comando.
+
 ## O que ainda não foi validado fisicamente
 
 Os testes acima não substituem estas verificações, que dependem de hardware, contas e
@@ -105,9 +129,9 @@ escolhas ainda não feitas:
 
 | Item | Situação | O que falta |
 |---|---|---|
-| Captura e reprodução na Pi | Sem adaptador real; só os fakes existem | Implementar drivers com limite de duração e parada idempotente, e testar com o microfone e a saída USB do [inventário](../raspberry-pi-os.md). O ganho do microfone medido é baixo para reconhecimento |
+| Captura e reprodução na Pi | Adaptadores PipeWire prontos e testados com processos simulados | Rodar na Pi com o microfone e a saída USB do [inventário](../raspberry-pi-os.md) e ouvir o resultado. O ganho do microfone medido é baixo para reconhecimento |
 | Display | Tela touch funciona no sistema; LCD 1602 não conectado e I2C do GPIO desligado | Escolher o display e ligar o LCD só depois de resolver a tensão do backpack (alerta no inventário) |
-| STT e TTS reais | Nenhum fornecedor selecionado | Escolher fornecedor e custo; a seleção não é implícita |
+| STT e TTS reais | Adaptador OpenAI opcional, validado ao vivo sem microfone ([voz](voice.md)) | Decidir se usa esse fornecedor (custo e privacidade) ou outro |
 | NeoSon Robot na Pi | Não instalado | Instalar o cliente e apontá-lo para o gateway na rede confiável |
 | Conta Microsoft | Nenhum consentimento de escrita | Consentimento local `login-write` ([runbook de escrita](personal-writes.md)); efeitos reais só com aprovação de cada ação |
 
