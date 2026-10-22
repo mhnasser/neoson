@@ -107,6 +107,7 @@ silêncio, sem comprovar reconhecimento ou fala reais. Decisão no [ADR-010](doc
 |---|---|
 | `GET /api/v1/health/live` | Indica que o processo está ativo |
 | `POST /api/v1/messages` | Recebe `{"text": "..."}` (e `session_id` opcional) e devolve a resposta e o `session_id`; exige `Authorization: Bearer <NEOSON_API_TOKEN>` |
+| `GET /api/v1/actions` | Lista as ações ainda pendentes ou aprovadas sem execução, inclusive de pedidos por voz |
 | `GET /api/v1/runs/{run_id}/actions` | Lista ações pendentes da execução para revisão autenticada |
 | `GET /api/v1/actions/{id}` | Consulta a ação concreta e seu estado |
 | `POST /api/v1/actions/{id}/decision` | Aprova ou nega com `{"approve": true/false}` |

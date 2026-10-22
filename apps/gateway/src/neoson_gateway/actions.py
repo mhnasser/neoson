@@ -63,6 +63,11 @@ def actions_router(
         dependencies=[Depends(auth), Depends(no_cache)],
     )
 
+    @router.get("/actions", response_model=list[ActionResponse])
+    async def open_actions() -> list[ActionResponse]:
+        """Pendentes ou aprovadas sem execução, inclusive de pedidos por voz."""
+        return [describe(v) for v in service.store.open_for(HTTP_OWNER)]
+
     @router.get("/runs/{run_id}/actions", response_model=list[ActionResponse])
     async def list_actions(run_id: UUID) -> list[ActionResponse]:
         return [describe(v) for v in service.store.for_run(run_id, HTTP_OWNER)]

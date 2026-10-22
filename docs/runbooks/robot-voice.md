@@ -62,7 +62,34 @@ observado entre etapas/eventos; leitura bloqueante pode aguardar timeout de tran
 reprodução, observar cancelamento e implementar stop idempotente. Não estão incluídos.
 Execução interrompida pode ter efeito incerto; não repetir automaticamente.
 
+## Pedido que exige aprovação
+
+Quando a fala leva a uma ação sensível (`calendar_create`, `email_draft`), o gateway
+suspende a execução e o Robot mostra `approval_required`. O áudio do pedido de aprovação
+é reproduzido, mas o Robot não decide nada e não mostra argumentos nem o `run_id`. A
+decisão acontece no canal autenticado do [runbook de aprovações](action-approvals.md):
+
+1. `GET /api/v1/actions` lista as ações abertas do proprietário, as mais recentes
+   primeiro, com ferramenta, argumentos completos e destino.
+2. `POST /api/v1/actions/{id}/decision` com `{"approve": true}` ou `false`.
+3. `POST /api/v1/actions/{id}/resume` executa a chamada salva uma única vez.
+
+A próxima fala continua a mesma sessão pelo arquivo de estado local. Fechar o stream
+durante o processamento cancela a execução no servidor: ela é gravada como falha, com o
+uso já medido, e nenhuma ação pendente é criada.
+
+Para montar essa jornada em desenvolvimento, o gateway precisa do motor com OpenAI e
+das ferramentas de escrita com `NEOSON_PERSONAL_WRITE_PROVIDER=fake`. A voz fake hoje
+exige `NEOSON_LLM_PROVIDER=echo`, que não cria ações. Por isso a jornada completa é
+validada pelo teste isolado abaixo, não pela composição do servidor.
+
 ## Validação
+
+`uv run --no-sync python -m pytest -q tests/test_voice_approval_journey.py` executa a
+jornada voz → análise delegada → aprovação → efeito no sandbox → nova fala na mesma
+sessão, com Robot, cliente HTTP, gateway, motor, SQLite e sandbox reais, e fala,
+dispositivos e modelo simulados. Também cobre negação sem efeito e cancelamento pelo
+stream durante a análise delegada.
 
 `uv run --no-sync python -m pytest -q tests/test_robot_voice.py` cobre ativação, estados,
 privacidade, cancelamento, desconexão, parsing limitado, limpeza, estado atômico e
@@ -70,3 +97,19 @@ reinício, com cliente/gateway/loop reais e dispositivos/provedores fake. Transp
 teste é no processo. Não comprova reconhecimento, fala, rede da Pi ou hardware reais.
 Consulte o [inventário](../raspberry-pi-os.md); drivers, volume, GPIO e validação física
 continuam separados. Não há alteração de hardware necessária para a simulação.
+
+## O que ainda não foi validado fisicamente
+
+Os testes acima não substituem estas verificações, que dependem de hardware, contas e
+escolhas ainda não feitas:
+
+| Item | Situação | O que falta |
+|---|---|---|
+| Captura e reprodução na Pi | Sem adaptador real; só os fakes existem | Implementar drivers com limite de duração e parada idempotente, e testar com o microfone e a saída USB do [inventário](../raspberry-pi-os.md). O ganho do microfone medido é baixo para reconhecimento |
+| Display | Tela touch funciona no sistema; LCD 1602 não conectado e I2C do GPIO desligado | Escolher o display e ligar o LCD só depois de resolver a tensão do backpack (alerta no inventário) |
+| STT e TTS reais | Nenhum fornecedor selecionado | Escolher fornecedor e custo; a seleção não é implícita |
+| NeoSon Robot na Pi | Não instalado | Instalar o cliente e apontá-lo para o gateway na rede confiável |
+| Conta Microsoft | Nenhum consentimento de escrita | Consentimento local `login-write` ([runbook de escrita](personal-writes.md)); efeitos reais só com aprovação de cada ação |
+
+Até essas validações, a jornada da F6 está comprovada somente com adaptadores
+simulados. Nenhuma mensagem foi enviada e nenhum efeito real foi executado.

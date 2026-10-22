@@ -26,7 +26,10 @@ HTTP que leia o token da configuração local, sem copiá-lo para documentação
 de comandos. Não compartilhe esse token: a instalação possui um só proprietário HTTP.
 
 1. Envie `POST /api/v1/messages` normalmente. Se a resposta tiver `needs_approval`, guarde
-   o `run_id` e consulte `GET /api/v1/runs/{run_id}/actions`.
+   o `run_id` e consulte `GET /api/v1/runs/{run_id}/actions`. Quando o pedido veio do
+   Robot, que não mostra o `run_id`, use `GET /api/v1/actions`: lista até 20 ações ainda
+   pendentes ou aprovadas sem execução, as mais recentes primeiro. Ações vencidas saem
+   da lista.
 2. Revise ferramenta, `tool_description` (inclui destino/simulação quando disponível),
    argumentos completos, fingerprint, sessão, execução e validade.
    `GET /api/v1/actions/{id}` recupera o mesmo registro. A resposta usa `Cache-Control:

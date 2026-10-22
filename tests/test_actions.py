@@ -168,6 +168,21 @@ def test_other_identity_cannot_see_or_execute(setup: Setup, operation: str) -> N
     assert not setup.tool.effects
 
 
+def test_open_actions_list_only_the_owners_decidable_or_resumable(
+    setup: Setup,
+) -> None:
+    service = setup.service()
+    assert [v.action.id for v in service.store.open_for("http-owner")] == [
+        setup.action.id
+    ]
+    assert not service.store.open_for("other-owner")
+    service.store.decide(setup.action.id, "http-owner", True)
+    assert [v.state for v in service.store.open_for("http-owner")] == ["approved"]
+    rewrite(setup, expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    assert not service.store.open_for("http-owner")
+    assert service.store.get(setup.action.id, "http-owner").state == "expired"
+
+
 @pytest.mark.parametrize("approve", [True, False])
 def test_expired_action_never_executes(setup: Setup, approve: bool) -> None:
     rewrite(setup, expires_at=datetime.now(UTC) - timedelta(seconds=1))

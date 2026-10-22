@@ -172,6 +172,19 @@ class SqliteActionStore:
             ).fetchall()
             return tuple(_get(c, UUID(r[0]), owner) for r in ids)
 
+    def open_for(self, owner: str, limit: int = 20) -> tuple[ActionView, ...]:
+        """Ações ainda decidíveis ou retomáveis, mais recentes primeiro."""
+        with closing(connect(self.path)) as c, transaction(c):
+            ids = c.execute(
+                "SELECT id FROM pending_actions WHERE owner=? "
+                "AND state IN ('pending','approved') "
+                "ORDER BY expires_at DESC, id LIMIT ?",
+                (owner, limit),
+            ).fetchall()
+            views = [_get(c, UUID(r[0]), owner) for r in ids]
+            # `_get` marca as vencidas como expiradas; elas saem da lista.
+            return tuple(v for v in views if v.state in ("pending", "approved"))
+
     def decide(self, action_id: UUID, owner: str, approve: bool) -> ActionView:
         decision = "approve" if approve else "deny"
         with closing(connect(self.path)) as c, transaction(c):
