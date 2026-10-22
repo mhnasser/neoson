@@ -14,11 +14,13 @@ from neoson_core.engine import (
     PolicyEngine,
 )
 from neoson_core.engine.actions import ActionService, action_context
+from neoson_core.engine.voice import VoiceLimits, VoicePipeline
 from neoson_core.infrastructure.actions import SqliteActionStore
 from neoson_core.infrastructure.config import ConfigError, ServerSettings
 from neoson_core.memory.curated import SqliteCuratedMemory
 from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
+from neoson_core.providers.fake_speech import FakeSpeech
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.policy_registry import PolicyRegistry
 from neoson_core.routing.session_router import SessionRouter
@@ -92,6 +94,26 @@ def build_actions(settings: ServerSettings) -> ActionService | None:
         action_context(runtime_hash(settings), policy, tools),
         settings.run_timeout_seconds,
         SqliteSkillRegistry(settings.db_path),
+    )
+
+
+def build_voice(settings: ServerSettings, engine: Engine) -> VoicePipeline | None:
+    if settings.voice_provider == "disabled":
+        return None
+    if settings.llm_provider != "echo" or settings.env == "production":
+        raise ConfigError("Voz fake exige NEOSON_LLM_PROVIDER=echo fora de produção.")
+    speech = FakeSpeech()
+    return VoicePipeline(
+        engine,
+        speech,
+        speech,
+        VoiceLimits(
+            max_bytes=settings.voice_max_bytes,
+            max_seconds=settings.voice_max_seconds,
+            timeout_seconds=settings.voice_timeout_seconds,
+            max_concurrency=settings.voice_max_concurrency,
+        ),
+        simulated=True,
     )
 
 

@@ -17,8 +17,10 @@ from neoson_contracts.api.v1.messages import (
 )
 from neoson_core.engine import Engine, RunStatus, SessionNotFound, UserMessage
 from neoson_core.engine.actions import ActionConflict, ActionNotFound, ActionService
+from neoson_core.engine.voice import VoicePipeline
 from neoson_gateway import __version__
 from neoson_gateway.actions import HTTP_OWNER, actions_router
+from neoson_gateway.voice import voice_router
 
 health = APIRouter(prefix="/api/v1/health", tags=["health"])
 
@@ -105,13 +107,18 @@ def messages_router(engine: Engine, api_token: str) -> APIRouter:
 
 
 def create_app(
-    engine: Engine, api_token: str, actions: ActionService | None = None
+    engine: Engine,
+    api_token: str,
+    actions: ActionService | None = None,
+    voice: VoicePipeline | None = None,
 ) -> FastAPI:
     if not api_token:
         raise ValueError("O gateway exige um token de API.")
     app = FastAPI(title="NeoSon Gateway", version=__version__)
     app.include_router(health)
     app.include_router(messages_router(engine, api_token))
+    if voice is not None:
+        app.include_router(voice_router(voice, require_token(api_token)))
     if actions is not None:
         app.include_router(actions_router(actions, require_token(api_token)))
 

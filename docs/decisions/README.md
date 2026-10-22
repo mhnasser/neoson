@@ -17,3 +17,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-007](ADR-007-Skills.md) | Skills: formato, aprovação e execução | accepted |
 | [ADR-008](ADR-008-Propostas-Skills.md) | Propostas, curadoria e revisão de skills | accepted |
 | [ADR-009](ADR-009-Router-Lab.md) | Dataset e avaliação de políticas de roteamento | accepted |
+| [ADR-010](ADR-010-Voice.md) | Portas de fala e transporte de áudio limitado | accepted |

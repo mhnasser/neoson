@@ -79,6 +79,12 @@ class ServerSettings(BaseSettings):
 
     api_token: SecretStr | None = None
 
+    voice_provider: Literal["disabled", "fake"] = "disabled"
+    voice_max_bytes: int = Field(default=1048576, ge=44, le=2097152)
+    voice_max_seconds: float = Field(default=15, gt=0, le=30)
+    voice_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    voice_max_concurrency: int = Field(default=1, ge=1, le=4)
+
     telegram_bot_token: SecretStr | None = None
     telegram_allowed_users: Annotated[list[int], NoDecode] = Field(default_factory=list)
 

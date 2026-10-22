@@ -94,6 +94,11 @@ responder ou responder fora do contrato; 2 para mensagem, opção ou URL inváli
 
 ## API
 
+O gateway também possui um [pipeline de voz](docs/runbooks/voice.md) com portas STT/TTS
+substituíveis e entrada WAV autenticada/limitada. A rota `/api/v1/voice` vem desativada;
+o modo fake, restrito a echo fora de produção, valida o fluxo com texto constante e
+silêncio, sem comprovar reconhecimento ou fala reais. Decisão no [ADR-010](docs/decisions/ADR-010-Voice.md).
+
 | Método e rota | Uso |
 |---|---|
 | `GET /api/v1/health/live` | Indica que o processo está ativo |
