@@ -55,3 +55,17 @@ de orçamento/permissões do motor nem migração de banco.
 
 Procedimento em [voz](../runbooks/voice.md). Reconhecimento real, captura física e
 feedback no display exigem validação própria e não são comprovados pelo modo fake.
+
+## Feedback observável no Robot
+
+O endpoint adicional `/api/v1/voice/stream` entrega eventos NDJSON versionados em
+`events/v1/robot`, sem alterar a resposta JSON anterior. Progresso contém somente
+estados, com buffer limitado. Callback por requisição informa using_tool apenas ao
+executar ferramenta; não existe um observador global compartilhado entre sessões.
+TTS é processamento; speaking é reservado à reprodução no cliente.
+
+O Robot valida frames/áudio antes de reproduzir, exige ativação e indicador, encerra
+dispositivos/stream em falhas e nunca faz retry automático. Continuidade entre reinícios
+salva apenas sessão e vínculo ao gateway; não retoma captura/reprodução. Dispositivos
+fake e CLI explícita permitem verificar o fluxo sem drivers. Procedimento em
+[Robot de voz](../runbooks/robot-voice.md).

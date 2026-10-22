@@ -94,6 +94,10 @@ responder ou responder fora do contrato; 2 para mensagem, opção ou URL inváli
 
 ## API
 
+O Robot possui uma [demonstração de voz e estados](docs/runbooks/robot-voice.md) com
+captura/playback/display fake, ativação explícita e progresso recebido do servidor.
+Ela preserva apenas a sessão entre reinícios e não abre dispositivos reais.
+
 O gateway também possui um [pipeline de voz](docs/runbooks/voice.md) com portas STT/TTS
 substituíveis e entrada WAV autenticada/limitada. A rota `/api/v1/voice` vem desativada;
 o modo fake, restrito a echo fora de produção, valida o fluxo com texto constante e

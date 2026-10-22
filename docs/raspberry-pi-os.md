@@ -1,5 +1,9 @@
 # Inventário do hardware
 
+O [runbook do Robot de voz](runbooks/robot-voice.md) permite testar estados e transporte
+com dispositivos fake, sem instalar drivers ou alterar este hardware. Esses testes de
+software não substituem a validação física de áudio/display.
+
 Dois equipamentos: o Raspberry Pi 5 (da seção "Sistema" até "Repetir o inventário") e o notebook
 servidor (última seção).
 

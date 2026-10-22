@@ -1,9 +1,13 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from neoson_core.engine.llm import Usage
+
+EngineActivity = Literal["thinking", "using_tool"]
+ActivityObserver = Callable[[EngineActivity], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,6 +16,9 @@ class UserMessage:
     session_id: UUID | None = None
     channel: str = "http"
     principal: str | None = None
+    on_activity: ActivityObserver | None = field(
+        default=None, repr=False, compare=False
+    )
 
 
 class RunStatus(StrEnum):

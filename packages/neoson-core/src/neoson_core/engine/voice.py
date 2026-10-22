@@ -16,6 +16,7 @@ from neoson_core.engine.persistence import SessionNotFound
 
 SAMPLE_RATE = 16000
 AudioStatus = Literal["ready", "synthesis_timeout", "synthesis_failed", "text_too_long"]
+VoiceActivity = Literal["transcribing", "thinking", "using_tool"]
 
 
 class InvalidAudio(ValueError):
@@ -158,6 +159,7 @@ class VoicePipeline:
         load: Callable[[], Awaitable[bytes]],
         session_id: UUID | None,
         principal: str,
+        on_activity: Callable[[VoiceActivity], None] | None = None,
     ) -> VoiceResult:
         if self._slots.locked():
             raise SpeechUnavailable("voice_busy")
@@ -171,6 +173,8 @@ class VoicePipeline:
             except TimeoutError:
                 raise SpeechUnavailable("voice_upload_timeout") from None
             audio = read_wav(raw, self.limits)
+            if on_activity:
+                on_activity("transcribing")
             try:
                 text = await asyncio.wait_for(
                     self.transcriber.transcribe(audio),
@@ -187,10 +191,16 @@ class VoicePipeline:
             ):
                 raise SpeechUnavailable("invalid_transcription")
             try:
+                if on_activity:
+                    on_activity("thinking")
                 result = await asyncio.wait_for(
                     self.engine.run(
                         UserMessage(
-                            text, session_id, channel="voice", principal=principal
+                            text,
+                            session_id,
+                            channel="voice",
+                            principal=principal,
+                            on_activity=on_activity,
                         )
                     ),
                     timeout=max(deadline - monotonic(), 0),

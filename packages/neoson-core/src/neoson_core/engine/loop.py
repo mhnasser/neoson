@@ -7,7 +7,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from neoson_core.engine.actions import PendingAction, action_context, skill_binding
-from neoson_core.engine.conversation import RunResult, RunStatus, UserMessage
+from neoson_core.engine.conversation import (
+    ActivityObserver,
+    RunResult,
+    RunStatus,
+    UserMessage,
+)
 from neoson_core.engine.curated import CuratedMemory, MemoryFact
 from neoson_core.engine.llm import (
     LLMError,
@@ -136,6 +141,7 @@ class AgentLoop:
         session_id, history = await self._session(message)
         context = RunContext(session_id=session_id, budget=self._budget)
         run = _Run(context, self._on_state, self._skills)
+        run.on_activity = message.on_activity
         user = Message(role=Role.USER, content=message.text)
         try:
             text, model = await self._execute(run, message, history, user)
@@ -339,7 +345,11 @@ class AgentLoop:
             elif verdict is Verdict.DENY:
                 text = TOOL_DENIED
             else:
+                if run.on_activity:
+                    run.on_activity("using_tool")
                 result = await run.execute(self._tools, call)
+                if run.on_activity:
+                    run.on_activity("thinking")
                 if result.status is ToolResultStatus.REQUIRES_APPROVAL:
                     raise _Suspend([call.name])
                 text = result.summary
@@ -364,6 +374,7 @@ class _Run:
         self.transcript: list[Message] = []
         self.skills = SkillContext(skills)
         self.pending_actions: list[PendingAction] = []
+        self.on_activity: ActivityObserver | None = None
         self._on_state = on_state
         self._notify()
 
