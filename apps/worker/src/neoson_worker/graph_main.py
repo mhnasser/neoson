@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from neoson_core.engine.graph import GraphStore, check_limit
 from neoson_core.infrastructure.config import ConfigError, ServerSettings, load_settings
-from neoson_core.memory.graph import SqliteGraphStore
+from neoson_core.memory.graph_backend import graph_store
 from neoson_core.memory.graph_extraction import GraphExtractor, GraphLimits
 from neoson_core.memory.graph_review import decide, pending_facts
 from neoson_core.providers.openai_provider import OpenAIProvider
@@ -102,7 +102,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         settings = load_settings()
-        store = SqliteGraphStore(settings.db_path)
+        store = graph_store(settings)
         if args.command == "run":
             extractor = build_extractor(settings, store)
         elif args.command == "pending":

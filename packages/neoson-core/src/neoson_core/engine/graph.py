@@ -168,6 +168,33 @@ def check_limit(limit: int) -> None:
         raise ValueError(f"Limite deve ser um inteiro entre 1 e {MAX_QUERY_LIMIT}.")
 
 
+def status_values(statuses: Collection[FactStatus]) -> tuple[str, ...]:
+    """Estados pedidos, validados e em ordem estável; ao menos um."""
+    wanted = tuple(sorted({FactStatus(status).value for status in statuses}))
+    if not wanted:
+        raise ValueError("Informe ao menos um estado.")
+    return wanted
+
+
+def clean_reason(reason: str | None) -> str | None:
+    if reason is None:
+        return None
+    if not isinstance(reason, str):
+        raise ValueError("Motivo inválido.")
+    text = " ".join(reason.split())
+    if not 1 <= len(text) <= MAX_REASON_CHARS:
+        raise ValueError("Motivo inválido.")
+    return text
+
+
+def search_key(text: str) -> str:
+    """Chave da busca de entidades por trecho do nome."""
+    key = name_key(text) if isinstance(text, str) else ""
+    if not 1 <= len(key) <= MAX_NAME_CHARS:
+        raise ValueError("Texto de busca inválido.")
+    return key
+
+
 class GraphStore(Protocol):
     async def upsert(self, facts: Sequence[Fact]) -> int:
         """Grava fatos novos e devolve quantos entraram; IDs repetidos são ignorados,

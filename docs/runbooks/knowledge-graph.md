@@ -83,8 +83,46 @@ motivo, sem o texto da memória nem a mensagem do fornecedor.
 | `source_forgotten` | A memória foi esquecida antes do fim; nada foi gravado |
 | `attempt_limit` | Tentativas esgotadas |
 
+## Neo4j (opcional)
+
+O padrão guarda o grafo no próprio SQLite. Para usar um servidor Neo4j
+([ADR-017](../decisions/ADR-017-Neo4j-Adapter.md)):
+
+1. Instale e opere o servidor por conta própria, na rede confiável, com usuário e senha
+   próprios. Confira a memória disponível no notebook antes.
+2. Instale o driver no ambiente do servidor NeoSon, com o gateway, o bot e o worker
+   parados (no Windows, executáveis em uso impedem a troca):
+
+   ```bash
+   uv sync --all-packages --extra neo4j
+   ```
+
+3. Configure em `neoson.env`:
+
+   ```dotenv
+   NEOSON_GRAPH_BACKEND=neo4j
+   NEOSON_NEO4J_URI=bolt://neo4j-host.local:7687
+   NEOSON_NEO4J_USER=neo4j
+   NEOSON_NEO4J_PASSWORD=<senha>
+   ```
+
+4. Valide com um servidor **descartável** antes de usar o real: a suíte grava nós de
+   teste.
+
+   ```bash
+   NEOSON_NEO4J_TESTS=1 NEOSON_NEO4J_URI=... NEOSON_NEO4J_PASSWORD=... \
+     uv run --no-sync python -m pytest -q tests/test_graph_contract.py
+   ```
+
+Restrições e índices são criados na primeira consulta. Fatos já gravados no SQLite não
+são copiados para o Neo4j: a troca começa um grafo vazio, e as memórias antigas não são
+reextraídas automaticamente. Jobs, tentativas e revisão continuam no SQLite. Os avisos
+de rede do driver podem citar o host nos logs locais.
+
 ## Backup
 
-O grafo, os jobs e as tentativas ficam no mesmo SQLite e entram no backup normal. O
-manifesto conta `graph_entities` e `graph_facts`. Restaurar um backup antigo também
-restaura estados de revisão antigos.
+Com o backend SQLite, o grafo, os jobs e as tentativas ficam no mesmo banco e entram no
+backup normal. O manifesto conta `graph_entities` e `graph_facts`. Com Neo4j, faça
+também o backup do servidor (por exemplo `neo4j-admin database dump`); o backup do
+NeoSon não o inclui. Restaurar um backup antigo também restaura estados de revisão
+antigos.

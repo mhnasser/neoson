@@ -81,6 +81,12 @@ class ServerSettings(BaseSettings):
     timezone: str = "America/Sao_Paulo"
 
     memory_graph_enabled: bool = False
+    graph_backend: Literal["sqlite", "neo4j"] = "sqlite"
+    neo4j_uri: str | None = None
+    neo4j_user: str = "neo4j"
+    neo4j_password: SecretStr | None = None
+    neo4j_database: str = "neo4j"
+    neo4j_timeout_seconds: float = Field(default=10, gt=0, le=60)
     graph_extraction_timeout_seconds: PositiveFloat = 30
     graph_extraction_max_attempts: PositiveInt = 3
     graph_extraction_max_daily_jobs: PositiveInt = 20

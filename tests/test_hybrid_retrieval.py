@@ -198,3 +198,35 @@ def test_composition_enables_graph_search_only_with_the_flag(
     monkeypatch.setenv("NEOSON_MEMORY_GRAPH_ENABLED", "true")
     graph, enabled = described()
     assert graph == GRAPH_DESCRIPTION and enabled != disabled
+
+
+def test_graph_outage_keeps_history_results(db: Path) -> None:
+    class Down(SqliteGraphStore):
+        async def find_entities(self, text: str, *, limit: int) -> Any:
+            raise RuntimeError("bolt://usuario:senha" + chr(64) + "host.invalid")
+
+    store = SqliteConversationStore(db)
+    session = asyncio.run(store.create_session("http"))
+    asyncio.run(
+        store.record_run(
+            RunRecord(
+                run_id=uuid4(),
+                session_id=session,
+                status=RunStatus.COMPLETED,
+                started_at=SEEN,
+                ended_at=SEEN,
+                messages=(Message(role=Role.USER, content="Ana revisou o NeoSon."),),
+            )
+        )
+    )
+    tool = MemorySearch(SqliteHistorySearch(db), UTC, Down(db))
+    call = ToolCall("m1", "memory_search", {"query": "Ana"})
+    result = asyncio.run(
+        ToolRegistry([tool]).execute(
+            call, ToolContext(run_id=uuid4(), session_id=uuid4())
+        )
+    )
+    assert "Trechos de conversas anteriores" in result.summary
+    assert result.summary.endswith("Fatos revisados indisponíveis no momento.")
+    assert result.data["facts_unavailable"] is True and result.data["facts"] == []
+    assert "senha" not in result.summary

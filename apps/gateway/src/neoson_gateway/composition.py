@@ -26,7 +26,7 @@ from neoson_core.engine.voice import VoiceLimits, VoicePipeline
 from neoson_core.infrastructure.actions import SqliteActionStore
 from neoson_core.infrastructure.config import ConfigError, ServerSettings
 from neoson_core.memory.curated import SqliteCuratedMemory
-from neoson_core.memory.graph import SqliteGraphStore
+from neoson_core.memory.graph_backend import graph_store
 from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
 from neoson_core.providers.fake_speech import FakeSpeech
@@ -206,9 +206,7 @@ def build_tools(
                 SqliteHistorySearch(settings.db_path),
                 ZoneInfo(settings.timezone),
                 # Só fatos revisados; desligado, a ferramenta fica como antes.
-                SqliteGraphStore(settings.db_path)
-                if settings.memory_graph_enabled
-                else None,
+                graph_store(settings) if settings.memory_graph_enabled else None,
             ),
             MemorySave(memory),
             MemoryForget(memory),

@@ -14,6 +14,10 @@ dependencies = [
     "tzdata>=2026.5",
 ]
 
+[project.optional-dependencies]
+# Adaptador opcional do grafo; a instalação padrão e a Pi não instalam o driver.
+neo4j = ["neo4j>=6.4,<7"]
+
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13"]
 build-backend = "uv_build"

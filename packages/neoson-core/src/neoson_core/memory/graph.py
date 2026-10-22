@@ -1,6 +1,6 @@
 """Grafo de conhecimento em SQLite: implementação de referência da porta.
 
-Sem servidor extra (§20): o Neo4j entra depois, como adaptador opcional.
+Sem servidor extra (§20); o Neo4j é um adaptador opcional (`neo4j_graph`).
 """
 
 import asyncio
@@ -11,8 +11,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from neoson_core.engine.graph import (
-    MAX_NAME_CHARS,
-    MAX_REASON_CHARS,
     Entity,
     EntityKind,
     Fact,
@@ -21,7 +19,10 @@ from neoson_core.engine.graph import (
     Relation,
     allowed_status,
     check_limit,
+    clean_reason,
     name_key,
+    search_key,
+    status_values,
 )
 from neoson_core.infrastructure.db import connect, migrate, now_iso, transaction
 
@@ -48,14 +49,8 @@ class SqliteGraphStore:
     async def set_status(
         self, fact_id: str, status: FactStatus, reason: str | None = None
     ) -> bool:
-        target = FactStatus(status)
-        if reason is not None:
-            if not isinstance(reason, str):
-                raise ValueError("Motivo inválido.")
-            reason = " ".join(reason.split())
-            if not 1 <= len(reason) <= MAX_REASON_CHARS:
-                raise ValueError("Motivo inválido.")
-        return await asyncio.to_thread(self._set_status, fact_id, target, reason)
+        target, text = FactStatus(status), clean_reason(reason)
+        return await asyncio.to_thread(self._set_status, fact_id, target, text)
 
     async def facts_about(
         self,
@@ -65,15 +60,12 @@ class SqliteGraphStore:
         statuses: Collection[FactStatus] = (FactStatus.ACTIVE,),
     ) -> Sequence[Fact]:
         check_limit(limit)
-        wanted = _statuses(statuses)
+        wanted = status_values(statuses)
         return await asyncio.to_thread(self._facts_about, entity_id, limit, wanted)
 
     async def find_entities(self, text: str, *, limit: int) -> Sequence[Entity]:
         check_limit(limit)
-        key = name_key(text) if isinstance(text, str) else ""
-        if not 1 <= len(key) <= MAX_NAME_CHARS:
-            raise ValueError("Texto de busca inválido.")
-        return await asyncio.to_thread(self._find, key, limit)
+        return await asyncio.to_thread(self._find, search_key(text), limit)
 
     async def list_facts(
         self,
@@ -83,7 +75,7 @@ class SqliteGraphStore:
         source_id: str | None = None,
     ) -> Sequence[Fact]:
         check_limit(limit)
-        wanted = _statuses(statuses)
+        wanted = status_values(statuses)
         return await asyncio.to_thread(self._list, wanted, limit, source_id)
 
     @contextmanager
@@ -195,13 +187,6 @@ class SqliteGraphStore:
                 ("%" + escaped + "%", limit),
             ).fetchall()
         return [Entity(EntityKind(kind), name) for kind, name in rows]
-
-
-def _statuses(statuses: Collection[FactStatus]) -> tuple[str, ...]:
-    wanted = tuple(sorted({FactStatus(status).value for status in statuses}))
-    if not wanted:
-        raise ValueError("Informe ao menos um estado.")
-    return wanted
 
 
 def _iso(moment: datetime | None) -> str | None:
