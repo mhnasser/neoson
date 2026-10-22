@@ -14,6 +14,11 @@ from neoson_core.engine import (
     PolicyEngine,
 )
 from neoson_core.engine.actions import ActionService, action_context
+from neoson_core.engine.integrations import (
+    CalendarReader,
+    EmailReader,
+    IntegrationError,
+)
 from neoson_core.engine.voice import VoiceLimits, VoicePipeline
 from neoson_core.infrastructure.actions import SqliteActionStore
 from neoson_core.infrastructure.config import ConfigError, ServerSettings
@@ -25,15 +30,20 @@ from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.routing.policy_registry import PolicyRegistry
 from neoson_core.routing.session_router import SessionRouter
 from neoson_core.skills.registry import SqliteSkillRegistry
-from neoson_core.tools.calendar_fake import FakeCalendar
 from neoson_core.tools.memory_facts import MemoryForget, MemorySave
 from neoson_core.tools.memory_search import MemorySearch
+from neoson_core.tools.microsoft_oauth import MicrosoftOAuth
+from neoson_core.tools.microsoft_read import MicrosoftPersonalReader
+from neoson_core.tools.oauth_store import LocalTokenStore
+from neoson_core.tools.personal_fake import DisabledPersonalReader, FakePersonalReader
+from neoson_core.tools.personal_read import CalendarList, EmailList
 from neoson_core.tools.registry import ToolRegistry
 from neoson_gateway.routing_runtime import BoundProvider, binding_for, runtime_hash
 
 # Ferramentas que o gateway registra; as skills só podem declarar estas.
 TOOL_NAMES = (
-    FakeCalendar.name,
+    CalendarList.name,
+    EmailList.name,
     MemorySearch.name,
     MemorySave.name,
     MemoryForget.name,
@@ -140,9 +150,11 @@ def build_provider(settings: ServerSettings) -> LLMProvider:
 def build_tools(
     settings: ServerSettings, memory: CuratedMemory, clock: Callable[[], datetime]
 ) -> ToolRegistry:
+    calendar, email = personal_readers(settings, clock)
     return ToolRegistry(
         [
-            FakeCalendar.demo(clock),
+            CalendarList(calendar),
+            EmailList(email),
             MemorySearch(
                 SqliteHistorySearch(settings.db_path), ZoneInfo(settings.timezone)
             ),
@@ -150,6 +162,39 @@ def build_tools(
             MemoryForget(memory),
         ]
     )
+
+
+def microsoft_oauth(settings: ServerSettings) -> MicrosoftOAuth:
+    if not settings.microsoft_client_id:
+        raise ConfigError("NEOSON_MICROSOFT_CLIENT_ID é obrigatório para Microsoft.")
+    try:
+        return MicrosoftOAuth(
+            settings.microsoft_client_id,
+            settings.microsoft_tenant,
+            LocalTokenStore(settings.microsoft_token_path),
+        )
+    except IntegrationError:
+        raise ConfigError(
+            "NEOSON_MICROSOFT_CLIENT_ID ou NEOSON_MICROSOFT_TENANT inválido."
+        ) from None
+
+
+def personal_readers(
+    settings: ServerSettings,
+    clock: Callable[[], datetime],
+) -> tuple[CalendarReader, EmailReader]:
+    if settings.personal_provider == "disabled":
+        disabled = DisabledPersonalReader()
+        return disabled, disabled
+    if settings.personal_provider == "fake":
+        if settings.env == "production":
+            raise ConfigError("Integrações fake não são permitidas em produção.")
+        fake = FakePersonalReader.demo(clock)
+        return fake, fake
+    reader = MicrosoftPersonalReader(
+        microsoft_oauth(settings), ZoneInfo(settings.timezone)
+    )
+    return reader, reader
 
 
 def api_token(settings: ServerSettings) -> str:

@@ -6,6 +6,7 @@ authors = [{ name = "Mohamad Nasser" }]
 license = "MIT"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "httpx2>=2.14.0",
     "neoson-contracts",
     "openai>=3.35.1",
     "pydantic-settings>=2.16.0",

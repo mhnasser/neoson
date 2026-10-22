@@ -339,6 +339,7 @@ name = "neoson-core"
 version = "0.1.0"
 source = { editable = "packages/neoson-core" }
 dependencies = [
+    { name = "httpx2" },
     { name = "neoson-contracts" },
     { name = "openai" },
     { name = "pydantic-settings" },
@@ -348,6 +349,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx2", specifier = ">=2.14.0" },
     { name = "neoson-contracts", editable = "packages/neoson-contracts" },
     { name = "openai", specifier = ">=3.35.1" },
     { name = "pydantic-settings", specifier = ">=2.16.0" },

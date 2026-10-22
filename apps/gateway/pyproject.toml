@@ -17,6 +17,7 @@ dependencies = [
 neoson-gateway = "neoson_gateway.main:main"
 neoson-telegram = "neoson_gateway.telegram_main:main"
 neoson-skills = "neoson_gateway.skills_main:main"
+neoson-personal = "neoson_gateway.personal_main:main"
 
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13"]

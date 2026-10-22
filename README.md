@@ -7,7 +7,7 @@ as decisões de arquitetura, em [`docs/decisions/`](docs/decisions/).
 > **Estado:** fundação pronta (workspace, configuração, CI) e primeira versão do motor. O cliente
 > `neoson-robot` envia mensagens ao gateway em `POST /api/v1/messages`, e o Agent Loop responde
 > pelo modelo configurado (OpenAI), com roteador por regras, limites de passos, tempo e tokens, e
-> ferramentas autorizadas por uma Policy Engine (por enquanto, uma agenda de demonstração). A API
+> ferramentas autorizadas por uma Policy Engine, com integrações opcionais de leitura. A API
 > exige token, a conversa fica gravada em SQLite (sobrevive a reinícios) e o worker consome os
 > eventos da outbox com lease, retry e idempotência. Há busca no histórico, memória curada com
 > fonte, painéis no Obsidian e skills aprovadas com versões e avaliação por fixtures.
@@ -122,7 +122,9 @@ ferramentas registradas; cada pedido é validado e passa pela Policy Engine, e a
 suspendem a execução com `needs_approval` ([ADR-003](docs/decisions/ADR-003-Seguranca-Tools.md)).
 Ferramentas disponíveis:
 
-- `calendar_list`: agenda fake de demonstração.
+- `calendar_list` e `email_list`: leitura de agenda e metadados do inbox, desativada por padrão.
+  Fornecedor fake explícito ou Microsoft Graph com OAuth mínimo; consulte o
+  [runbook de integrações pessoais](docs/runbooks/personal-integrations.md).
 - `memory_search`: busca em conversas anteriores (índice FTS5 no SQLite, sem diferenciar acentos)
   e devolve trechos com data e autor, para o modelo citar a fonte.
 - `memory_save` e `memory_forget`: memória curada. Guardam fatos e preferências que o usuário pediu

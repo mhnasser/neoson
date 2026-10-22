@@ -79,6 +79,11 @@ class ServerSettings(BaseSettings):
 
     api_token: SecretStr | None = None
 
+    personal_provider: Literal["disabled", "fake", "microsoft"] = "disabled"
+    microsoft_client_id: str | None = None
+    microsoft_tenant: str = "consumers"
+    microsoft_token_path: Path = Path("data/credentials/microsoft.bin")
+
     voice_provider: Literal["disabled", "fake"] = "disabled"
     voice_max_bytes: int = Field(default=1048576, ge=44, le=2097152)
     voice_max_seconds: float = Field(default=15, gt=0, le=30)

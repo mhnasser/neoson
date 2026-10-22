@@ -28,7 +28,10 @@ def runtime_hash(settings: ServerSettings) -> str:
             "approval": settings.approval_mode,
             "history": settings.history_max_messages,
             "timezone": settings.timezone,
-            "tools_version": "gateway-tools-v1",
+            "tools_version": "gateway-tools-v2",
+            "personal_provider": settings.personal_provider,
+            "microsoft_client": settings.microsoft_client_id,
+            "microsoft_tenant": settings.microsoft_tenant,
             "runtime_version": "session-routing-v1",
         }
     )
