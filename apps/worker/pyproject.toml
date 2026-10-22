@@ -13,6 +13,7 @@ dependencies = [
 neoson-worker = "neoson_worker.main:main"
 neoson-backup = "neoson_worker.backup_main:main"
 neoson-curator = "neoson_worker.curation_main:main"
+neoson-graph = "neoson_worker.graph_main:main"
 
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13"]

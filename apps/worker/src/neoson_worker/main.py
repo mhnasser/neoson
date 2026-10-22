@@ -15,7 +15,7 @@ from neoson_core.infrastructure.config import (
     load_settings,
 )
 from neoson_core.infrastructure.db import connect, migrate
-from neoson_core.memory import curated, vault_export
+from neoson_core.memory import curated, graph_extraction, vault_export
 from neoson_core.skills import curation
 from neoson_core.telemetry import (
     proposal_metrics,
@@ -67,6 +67,10 @@ def build_handlers(settings: ServerSettings | None = None) -> dict[str, list[Han
             for event_type in proposal_metrics.EVENT_TYPES
         }
     )
+    if settings is not None and settings.memory_graph_enabled:
+        routes[curated.EVENT_TYPE].append(
+            Handler(graph_extraction.HANDLER_NAME, graph_extraction.GraphScheduler())
+        )
     if settings is not None and settings.curation_enabled:
         scheduler = Handler(
             curation.HANDLER_NAME, curation.Scheduler(limits_for(settings))

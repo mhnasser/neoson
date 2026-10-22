@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+from contextlib import closing
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from uuid import uuid4
@@ -27,10 +28,13 @@ from neoson_core.engine.delegation import (
     DelegationLimits,
     DelegationManager,
 )
+from neoson_core.engine.graph import FactStatus, Relation
 from neoson_core.engine.messages import ToolCall
 from neoson_core.infrastructure.config import load_settings
 from neoson_core.infrastructure.db import connect
 from neoson_core.memory.curated import SqliteCuratedMemory
+from neoson_core.memory.graph import SqliteGraphStore
+from neoson_core.memory.graph_extraction import GraphExtractor
 from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
 from neoson_core.providers.openai_provider import OpenAIProvider
@@ -331,3 +335,30 @@ def test_live_delegation_stays_within_the_conservative_reserve() -> None:
     assert text.strip() and "14" in text
     assert manager.ledger.by_model == {model: usage}
     assert 0 < usage.input_tokens <= reserve and usage.output_tokens <= 600
+
+
+def test_live_graph_extraction_follows_the_contract(tmp_path: Path) -> None:
+    db = tmp_path / "graph.db"
+    memory = SqliteCuratedMemory(db)
+    store = SqliteGraphStore(db)
+    saved = asyncio.run(
+        memory.save("user", "Ana trabalha no projeto NeoSon.", None, None)
+    )
+    with closing(connect(db)) as connection, connection:
+        connection.execute(
+            "INSERT INTO graph_jobs (id, kind, source_id, memory_fact_id, created_at)"
+            " VALUES ('job-1', 'extract', ?, ?, ?)",
+            (f"memory_fact:{saved.id}", saved.id, datetime.now(UTC).isoformat()),
+        )
+    extractor = GraphExtractor(db, live_provider(), store)
+    assert asyncio.run(extractor.run_once())
+    facts = asyncio.run(
+        store.list_facts(statuses=(FactStatus.PENDING, FactStatus.ACTIVE), limit=20)
+    )
+    with closing(connect(db)) as connection:
+        jobs = connection.execute(
+            "SELECT status, last_error FROM graph_jobs"
+        ).fetchall()
+    assert [tuple(j) for j in jobs] == [("completed", None)]
+    assert facts and all(f.status is FactStatus.PENDING for f in facts)
+    assert any(f.relation is Relation.WORKS_ON for f in facts)

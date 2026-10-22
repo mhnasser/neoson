@@ -81,6 +81,14 @@ class ServerSettings(BaseSettings):
     timezone: str = "America/Sao_Paulo"
 
     memory_graph_enabled: bool = False
+    graph_extraction_timeout_seconds: PositiveFloat = 30
+    graph_extraction_max_attempts: PositiveInt = 3
+    graph_extraction_max_daily_jobs: PositiveInt = 20
+    graph_extraction_max_daily_tokens: PositiveInt = 40000
+    graph_extraction_max_input_chars: PositiveInt = 4000
+    graph_extraction_max_output_tokens: PositiveInt = 1500
+    graph_extraction_max_facts: int = Field(default=10, ge=1, le=50)
+    graph_extraction_max_daily_cost_usd: PositiveFloat | None = None
     metrics_export_enabled: bool = True
 
     api_token: SecretStr | None = None

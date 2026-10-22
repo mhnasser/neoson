@@ -65,9 +65,7 @@ class SqliteGraphStore:
         statuses: Collection[FactStatus] = (FactStatus.ACTIVE,),
     ) -> Sequence[Fact]:
         check_limit(limit)
-        wanted = tuple(sorted({FactStatus(status).value for status in statuses}))
-        if not wanted:
-            raise ValueError("Informe ao menos um estado.")
+        wanted = _statuses(statuses)
         return await asyncio.to_thread(self._facts_about, entity_id, limit, wanted)
 
     async def find_entities(self, text: str, *, limit: int) -> Sequence[Entity]:
@@ -76,6 +74,17 @@ class SqliteGraphStore:
         if not 1 <= len(key) <= MAX_NAME_CHARS:
             raise ValueError("Texto de busca inválido.")
         return await asyncio.to_thread(self._find, key, limit)
+
+    async def list_facts(
+        self,
+        *,
+        statuses: Collection[FactStatus],
+        limit: int,
+        source_id: str | None = None,
+    ) -> Sequence[Fact]:
+        check_limit(limit)
+        wanted = _statuses(statuses)
+        return await asyncio.to_thread(self._list, wanted, limit, source_id)
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -160,6 +169,22 @@ class SqliteGraphStore:
             ).fetchall()
         return [_fact(row) for row in rows]
 
+    def _list(
+        self, statuses: tuple[str, ...], limit: int, source_id: str | None
+    ) -> list[Fact]:
+        marks = ", ".join("?" * len(statuses))
+        where = f"f.status IN ({marks})"
+        params: list[object] = [*statuses]
+        if source_id is not None:
+            where += " AND f.source_id = ?"
+            params.append(source_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                _SELECT + f" WHERE {where} ORDER BY f.observed_at DESC, f.id LIMIT ?",
+                (*params, limit),
+            ).fetchall()
+        return [_fact(row) for row in rows]
+
     def _find(self, key: str, limit: int) -> list[Entity]:
         escaped = key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         with self._connection() as connection:
@@ -170,6 +195,13 @@ class SqliteGraphStore:
                 ("%" + escaped + "%", limit),
             ).fetchall()
         return [Entity(EntityKind(kind), name) for kind, name in rows]
+
+
+def _statuses(statuses: Collection[FactStatus]) -> tuple[str, ...]:
+    wanted = tuple(sorted({FactStatus(status).value for status in statuses}))
+    if not wanted:
+        raise ValueError("Informe ao menos um estado.")
+    return wanted
 
 
 def _iso(moment: datetime | None) -> str | None:

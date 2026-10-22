@@ -194,3 +194,13 @@ class GraphStore(Protocol):
     async def find_entities(self, text: str, *, limit: int) -> Sequence[Entity]:
         """Entidades cujo nome contém o texto, sem diferenciar caixa."""
         ...
+
+    async def list_facts(
+        self,
+        *,
+        statuses: Collection[FactStatus],
+        limit: int,
+        source_id: str | None = None,
+    ) -> Sequence[Fact]:
+        """Fatos por estado (e fonte), observados mais recentemente primeiro."""
+        ...

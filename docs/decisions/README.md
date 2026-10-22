@@ -22,3 +22,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-012](ADR-012-Personal-Writes.md) | Compromissos e rascunhos após revisão concreta | accepted |
 | [ADR-013](ADR-013-Delegation.md) | Delegação interna com contexto e orçamento isolados | accepted |
 | [ADR-014](ADR-014-Knowledge-Graph.md) | Grafo de conhecimento com proveniência, primeiro em SQLite | accepted |
+| [ADR-015](ADR-015-Graph-Extraction.md) | Extração de fatos para o grafo com revisão explícita | accepted |
