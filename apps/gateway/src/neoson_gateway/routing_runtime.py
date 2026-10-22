@@ -53,6 +53,19 @@ def runtime_hash(settings: ServerSettings) -> str:
             if settings.personal_write_provider == "fake"
             else None,
             "runtime_version": "session-routing-v1",
+            # Só entra ligada: o hash das instalações sem delegação não muda.
+            **(
+                {
+                    "delegation": {
+                        "attempts": settings.max_subagents,
+                        "timeout": settings.delegation_timeout_seconds,
+                        "tokens": settings.delegation_max_tokens,
+                        "output_tokens": settings.delegation_max_output_tokens,
+                    }
+                }
+                if settings.delegation_enabled
+                else {}
+            ),
         }
     )
 

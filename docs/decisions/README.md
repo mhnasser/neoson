@@ -20,3 +20,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-010](ADR-010-Voice.md) | Portas de fala e transporte de áudio limitado | accepted |
 | [ADR-011](ADR-011-Personal-Integrations.md) | Leitura de calendário/e-mail com OAuth mínimo | accepted |
 | [ADR-012](ADR-012-Personal-Writes.md) | Compromissos e rascunhos após revisão concreta | accepted |
+| [ADR-013](ADR-013-Delegation.md) | Delegação interna com contexto e orçamento isolados | accepted |

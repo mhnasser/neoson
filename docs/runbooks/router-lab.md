@@ -31,8 +31,9 @@ perfil do baseline e da candidata, relógio, cenários e orçamento. Deve haver 
 para cada caso do split, sem sobras. Perfis de sessões existentes também precisam estar
 declarados; prevalecem sobre a seleção inicial das duas políticas, mantendo o modelo fixo.
 Isso simula o vínculo de perfil, sem importar histórico real ou criar aquecimento artificial
-de cache. Recuperação/delegação são rótulos de rota; o motor atual não implementa execução
-de subagentes só por recomendar `delegate`.
+de cache. Recuperação/delegação são rótulos de rota; recomendar `delegate` não executa
+subagentes. A delegação opcional do motor depende de opt-in próprio
+([runbook](delegation.md)).
 
 Cada cenário declara separadamente:
 

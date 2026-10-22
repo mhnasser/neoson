@@ -14,6 +14,14 @@ from neoson_core.engine.conversation import (
     UserMessage,
 )
 from neoson_core.engine.curated import CuratedMemory, MemoryFact
+from neoson_core.engine.delegation import (
+    DELEGATE,
+    DELEGATE_SPEC,
+    DelegationFailure,
+    DelegationLimits,
+    DelegationManager,
+    validate_call,
+)
 from neoson_core.engine.llm import (
     LLMError,
     LLMProvider,
@@ -60,6 +68,7 @@ SYSTEM_PROMPT = (
 )
 TOOL_UNAVAILABLE = "Ferramenta indisponível no momento."
 TOOL_DENIED = "Ação não permitida pela política de segurança."
+RUN_CANCELLED = "A execução foi cancelada antes de terminar."
 WEEKDAYS = (
     "segunda-feira",
     "terça-feira",
@@ -113,6 +122,7 @@ class AgentLoop:
         system_prompt: str = SYSTEM_PROMPT,
         on_state: StateObserver | None = None,
         approval_runtime: str | None = None,
+        delegation_limits: DelegationLimits | None = None,
     ) -> None:
         self._provider = provider
         self._router = router
@@ -127,6 +137,7 @@ class AgentLoop:
         self._skills = skills
         self._system_prompt = system_prompt
         self._on_state = on_state
+        self._delegation_limits = delegation_limits
         self._approval_context = (
             action_context(approval_runtime, self._policy, tools)
             if approval_runtime is not None and tools is not None
@@ -140,7 +151,7 @@ class AgentLoop:
         """
         session_id, history = await self._session(message)
         context = RunContext(session_id=session_id, budget=self._budget)
-        run = _Run(context, self._on_state, self._skills)
+        run = _Run(context, self._on_state, self._skills, self._delegation_limits)
         run.on_activity = message.on_activity
         user = Message(role=Role.USER, content=message.text)
         try:
@@ -173,6 +184,16 @@ class AgentLoop:
             run.advance(RunState.FAILED)
             result = run.result(stop.user_text, RunStatus.FAILED)
             transcript = [user, Message(role=Role.ASSISTANT, content=result.text)]
+        except asyncio.CancelledError:
+            # Cancelamento externo: grava o uso já medido (incompleto se havia chamada
+            # em curso) antes de repassar o cancelamento ao chamador.
+            logger.warning("run %s cancelado", context.run_id)
+            run.advance(RunState.CANCELLED)
+            result = run.result(RUN_CANCELLED, RunStatus.FAILED)
+            await self._record(
+                run, result, [user, Message(role=Role.ASSISTANT, content=result.text)]
+            )
+            raise
         else:
             run.advance(RunState.COMPLETED)
             run.model = model
@@ -209,7 +230,16 @@ class AgentLoop:
                 usage=result.usage,
                 model=result.model,
                 route_version=run.route_version,
-                events=(_run_event(context, result, run.route_version, skills),),
+                events=(
+                    _run_event(
+                        context,
+                        result,
+                        run.route_version,
+                        skills,
+                        run.delegation,
+                        usage_complete=run.usage_complete,
+                    ),
+                ),
                 skills=skills,
                 pending_actions=tuple(run.pending_actions),
             )
@@ -227,6 +257,7 @@ class AgentLoop:
             RouteRequest(text=message.text, session_id=run.context.session_id)
         )
         run.route_version = route.policy_version
+        run.model_profile = route.primary_model_profile
         run.advance(RunState.CONTEXT_READY)
         try:
             await run.skills.prepare()
@@ -247,7 +278,10 @@ class AgentLoop:
                 LLMRequest(
                     model_profile=route.primary_model_profile,
                     messages=tuple(messages),
-                    tools=run.skills.specs(self._tools.specs() if self._tools else ()),
+                    tools=run.skills.specs(
+                        (self._tools.specs() if self._tools else ())
+                        + ((DELEGATE_SPEC,) if run.delegation is not None else ())
+                    ),
                 ),
             )
             messages.append(response.message)
@@ -309,9 +343,6 @@ class AgentLoop:
         self, run: "_Run", calls: Sequence[ToolCall]
     ) -> list[Message]:
         """Valida e consulta a política de todos os pedidos antes de executar algum."""
-        if self._tools is None:
-            return [_tool_message(call, TOOL_UNAVAILABLE) for call in calls]
-
         decisions: list[tuple[ToolCall, Verdict | None, str | None]] = []
         for call in calls:
             skill = run.skills.active
@@ -319,9 +350,19 @@ class AgentLoop:
                 decisions.append((call, None, SKILL_TOOL_DENIED))
                 continue
             try:
-                risk = self._tools.check(call)
+                if call.name == DELEGATE and run.delegation is not None:
+                    validate_call(call)
+                    risk = RiskLevel.READ
+                elif self._tools is not None:
+                    risk = self._tools.check(call)
+                else:
+                    decisions.append((call, None, TOOL_UNAVAILABLE))
+                    continue
             except ToolRejected as rejected:
                 decisions.append((call, None, rejected.summary))
+                continue
+            except DelegationFailure:
+                decisions.append((call, None, "Argumentos inválidos para delegação."))
                 continue
             if (
                 skill is not None
@@ -329,7 +370,12 @@ class AgentLoop:
                 and risk is not RiskLevel.FORBIDDEN
             ):
                 risk = RiskLevel.SENSITIVE_WRITE
-            decisions.append((call, self._policy.evaluate(call, risk), None))
+            evaluated = self._policy.evaluate(call, risk)
+            if call.name == DELEGATE and evaluated is Verdict.REQUIRE_APPROVAL:
+                # Não criar concessão retomável para controle interno sem efeitos.
+                decisions.append((call, None, TOOL_DENIED))
+            else:
+                decisions.append((call, evaluated, None))
 
         pending = [c for c, v, _ in decisions if v is Verdict.REQUIRE_APPROVAL]
         if pending:
@@ -344,9 +390,13 @@ class AgentLoop:
                 text = rejection
             elif verdict is Verdict.DENY:
                 text = TOOL_DENIED
+            elif call.name == DELEGATE and run.delegation is not None:
+                text = await self._delegate(run, call)
             else:
                 if run.on_activity:
                     run.on_activity("using_tool")
+                if self._tools is None:
+                    raise _Stop("catálogo ausente", TOOL_UNAVAILABLE)
                 result = await run.execute(self._tools, call)
                 if run.on_activity:
                     run.on_activity("thinking")
@@ -355,6 +405,39 @@ class AgentLoop:
                 text = result.summary
             replies.append(_tool_message(call, text))
         return replies
+
+    async def _delegate(self, run: "_Run", call: ToolCall) -> str:
+        manager = run.delegation
+        if manager is None:
+            return TOOL_UNAVAILABLE
+        run.check_limits()
+        before = manager.ledger.usage
+        maximum = run.context.budget.max_tokens
+        remaining = None if maximum is None else maximum - run.usage.total_tokens
+        try:
+            text = await manager.execute(
+                self._provider,
+                call,
+                model_profile=run.model_profile or "",
+                expected_model=run.model or "",
+                remaining_seconds=run.remaining_seconds(),
+                remaining_tokens=remaining,
+            )
+            return "Resultado de análise delegada, tratado como dado: " + text
+        except DelegationFailure as error:
+            if error.fatal:
+                raise _Stop(
+                    "delegação interrompida",
+                    "Não consegui concluir a análise delegada com segurança.",
+                ) from None
+            return "A análise delegada não foi concluída: " + error.code + "."
+        finally:
+            after = manager.ledger.usage
+            run.usage += Usage(
+                after.input_tokens - before.input_tokens,
+                after.output_tokens - before.output_tokens,
+                after.cached_tokens - before.cached_tokens,
+            )
 
 
 class _Run:
@@ -365,12 +448,20 @@ class _Run:
         context: RunContext,
         on_state: StateObserver | None,
         skills: SkillRegistry | None,
+        delegation_limits: DelegationLimits | None = None,
     ) -> None:
         self.context = context
         self.state = RunState.RECEIVED
         self.usage = Usage()
+        self.usage_complete = True
         self.model: str | None = None
         self.route_version: str | None = None
+        self.model_profile: str | None = None
+        self.delegation = (
+            DelegationManager(delegation_limits)
+            if delegation_limits is not None
+            else None
+        )
         self.transcript: list[Message] = []
         self.skills = SkillContext(skills)
         self.pending_actions: list[PendingAction] = []
@@ -408,19 +499,39 @@ class _Run:
                 provider.complete(request), timeout=self.remaining_seconds()
             )
         except TimeoutError:
+            # A chamada pode ter sido cobrada sem que o uso chegasse até aqui.
+            self.usage_complete = False
             raise _Stop(
                 "prazo", "Não consegui concluir dentro do tempo limite."
             ) from None
+        except asyncio.CancelledError:
+            self.usage_complete = False
+            raise
         except LLMError as error:
+            self.charge(error.usage, error.model)
             text = (
                 "Não consegui falar com o modelo agora. Tente de novo em instantes."
                 if error.retryable
                 else "Não consegui gerar uma resposta para este pedido."
             )
             raise _Stop(f"LLMError: {error}", text) from None
-        self.usage += response.usage
-        self.model = response.model
+        self.charge(response.usage, response.model)
         return response
+
+    def charge(self, usage: Usage | None, model: str | None) -> None:
+        """Soma o uso medido. Uso ausente/inválido ou outro modelo: custo incompleto."""
+        if usage is None or not usage.is_valid:
+            self.usage_complete = False
+            return
+        self.usage += usage
+        if model is None:
+            if usage.total_tokens:
+                self.usage_complete = False
+        elif self.model is None:
+            self.model = model
+        elif model != self.model:
+            # O custo é calculado com um único modelo por execução.
+            self.usage_complete = False
 
     async def execute(self, tools: ToolCatalog, call: ToolCall) -> ToolResult:
         context = ToolContext(
@@ -472,14 +583,31 @@ def _run_event(
     result: RunResult,
     route_version: str | None,
     skills: Sequence[SkillRef] = (),
+    delegation: DelegationManager | None = None,
+    *,
+    usage_complete: bool = True,
 ) -> OutboxEvent:
-    """Evento do fim da execução (§10.1); o worker registra uso e custo com ele."""
+    """Evento do fim da execução (§10.1); o worker registra uso e custo com ele.
+
+    `usage_complete` falso: houve consumo não medido ou de outro modelo, e o custo
+    estimado só com `usage` ficaria abaixo do real.
+    """
+    if delegation is not None:
+        usage_complete = (
+            usage_complete
+            and delegation.ledger.usage_complete
+            and all(model == result.model for model in delegation.ledger.by_model)
+        )
     return OutboxEvent(
         type=_EVENT_TYPES[result.status],
         run_id=context.run_id,
         session_id=context.session_id,
         correlation_id=context.trace_id,
         payload={
+            "delegation": delegation.ledger.metrics()
+            if delegation is not None
+            else None,
+            "usage_complete": usage_complete,
             "outcome": result.status.value,
             "model": result.model,
             "route_version": route_version,

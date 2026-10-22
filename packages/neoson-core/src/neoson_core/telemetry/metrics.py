@@ -20,6 +20,11 @@ class DailyMetrics:
     cached_tokens: int = 0
     cost_usd: float | None = None
     runs_without_cost: int = 0
+    runs_usage_incomplete: int = 0
+    delegation_attempts: int = 0
+    delegation_failed: int = 0
+    delegation_rejected: int = 0
+    delegation_tokens: int = 0
     models: Mapping[str, int] = field(default_factory=dict)
 
     @property
@@ -67,6 +72,8 @@ class _Run:
     cached_tokens: int
     started_at: datetime
     cost_usd: float | None
+    usage_incomplete: bool = False
+    delegation: tuple[int, int, int, int] = (0, 0, 0, 0)
 
 
 def daily_metrics(
@@ -86,6 +93,11 @@ def daily_metrics(
         cached_tokens=sum(r.cached_tokens for r in runs),
         cost_usd=round(sum(costs), 6) if costs else None,
         runs_without_cost=len(runs) - len(costs),
+        runs_usage_incomplete=sum(r.usage_incomplete for r in runs),
+        delegation_attempts=sum(r.delegation[0] for r in runs),
+        delegation_failed=sum(r.delegation[1] for r in runs),
+        delegation_rejected=sum(r.delegation[2] for r in runs),
+        delegation_tokens=sum(r.delegation[3] for r in runs),
         models=dict(sorted(Counter(r.model for r in runs).items())),
     )
 
@@ -170,8 +182,10 @@ def _runs_between(
     # Margem de um dia no SQL; o recorte exato é feito com datas de verdade.
     rows = connection.execute(
         "SELECT r.status, r.model, r.input_tokens, r.output_tokens, r.cached_tokens,"
-        " r.started_at, u.cost_usd FROM runs r"
+        " r.started_at, u.cost_usd, u.usage_complete, d.attempts, d.failed,"
+        " d.rejected, d.input_tokens + d.output_tokens FROM runs r"
         " LEFT JOIN usage_records u ON u.run_id = r.id"
+        " LEFT JOIN delegation_records d ON d.run_id = r.id"
         " WHERE r.started_at >= ? AND r.started_at < ?",
         (
             (start - timedelta(days=1)).isoformat(),
@@ -187,6 +201,8 @@ def _runs_between(
             cached_tokens=row[4],
             started_at=_parse(row[5]),
             cost_usd=row[6],
+            usage_incomplete=row[7] == 0,
+            delegation=(row[8] or 0, row[9] or 0, row[10] or 0, row[11] or 0),
         )
         for row in rows
     ]

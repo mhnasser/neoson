@@ -14,6 +14,7 @@ from neoson_core.engine import (
     PolicyEngine,
 )
 from neoson_core.engine.actions import ActionService, action_context
+from neoson_core.engine.delegation import DelegationLimits
 from neoson_core.engine.integrations import (
     CalendarReader,
     CalendarWriter,
@@ -101,6 +102,28 @@ def build_engine(settings: ServerSettings) -> Engine:
         memory_max_facts=settings.memory_max_facts,
         skills=SqliteSkillRegistry(settings.db_path),
         approval_runtime=runtime_hash(settings),
+        delegation_limits=delegation_limits(settings),
+    )
+
+
+def delegation_limits(settings: ServerSettings) -> DelegationLimits | None:
+    """Delegação só com opt-in explícito; skills não podem declará-la."""
+    if not settings.delegation_enabled:
+        return None
+    if settings.max_subagents < 1:
+        raise ConfigError(
+            "NEOSON_MAX_SUBAGENTS deve ser >= 1 com NEOSON_DELEGATION_ENABLED=true."
+        )
+    if settings.delegation_max_output_tokens >= settings.delegation_max_tokens:
+        raise ConfigError(
+            "NEOSON_DELEGATION_MAX_OUTPUT_TOKENS deve ser menor que "
+            "NEOSON_DELEGATION_MAX_TOKENS."
+        )
+    return DelegationLimits(
+        max_attempts=settings.max_subagents,
+        max_tokens=settings.delegation_max_tokens,
+        max_output_tokens=settings.delegation_max_output_tokens,
+        timeout_seconds=settings.delegation_timeout_seconds,
     )
 
 

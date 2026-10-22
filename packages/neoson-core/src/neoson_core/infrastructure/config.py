@@ -69,6 +69,12 @@ class ServerSettings(BaseSettings):
     memory_max_facts: PositiveInt = 30
     run_timeout_seconds: PositiveFloat = 120.0
     max_subagents: NonNegativeInt = 2
+    # Análise delegada sem ferramentas; desligada por padrão. `max_subagents` limita
+    # as tentativas por execução.
+    delegation_enabled: bool = False
+    delegation_timeout_seconds: float = Field(default=15, gt=0, le=120)
+    delegation_max_tokens: int = Field(default=16000, ge=1, le=200000)
+    delegation_max_output_tokens: int = Field(default=1000, ge=1, le=16000)
     approval_mode: Literal["required_for_sensitive", "always"] = (
         "required_for_sensitive"
     )

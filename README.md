@@ -128,6 +128,10 @@ Ferramentas disponíveis:
 - `calendar_create` e `email_draft`: compromisso sem convidados ou rascunho sem envio,
   com aprovação persistente por ação e destino separado, desativado por padrão.
   Veja o [runbook de escrita limitada](docs/runbooks/personal-writes.md).
+- `delegate`: análise delegada a uma chamada sem ferramentas, só com a tarefa e o trecho
+  escolhidos, com tentativas, prazo e tokens limitados por execução e custo contabilizado
+  inclusive em falhas. Desativada por padrão; veja o [runbook](docs/runbooks/delegation.md)
+  e o [ADR-013](docs/decisions/ADR-013-Delegation.md).
 - `memory_search`: busca em conversas anteriores (índice FTS5 no SQLite, sem diferenciar acentos)
   e devolve trechos com data e autor, para o modelo citar a fonte.
 - `memory_save` e `memory_forget`: memória curada. Guardam fatos e preferências que o usuário pediu

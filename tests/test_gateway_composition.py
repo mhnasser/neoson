@@ -10,6 +10,7 @@ from neoson_core.providers.fake import ScriptedProvider, call_tool, reply
 from neoson_core.skills.loader import load_skill
 from neoson_core.skills.registry import SqliteSkillRegistry
 from neoson_gateway.composition import api_token, build_engine
+from neoson_gateway.routing_runtime import runtime_hash
 
 
 @pytest.fixture(autouse=True)
@@ -104,3 +105,74 @@ def test_openai_mode_creates_the_conversation_database(
     build_engine(load_settings(env_file=None))
 
     assert (tmp_path / "db" / "neoson.db").exists()
+
+
+def openai_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "chave-ficticia")
+    monkeypatch.setenv("NEOSON_LLM_MODEL", "modelo-x")
+    monkeypatch.setenv("NEOSON_DB_PATH", str(tmp_path / "neoson.db"))
+
+
+def run_with(
+    monkeypatch: pytest.MonkeyPatch, provider: ScriptedProvider, text: str
+) -> RunStatus:
+    monkeypatch.setattr(
+        "neoson_gateway.composition.OpenAIProvider.from_api_key",
+        lambda **kwargs: provider,
+    )
+    engine = build_engine(load_settings(env_file=None))
+    return asyncio.run(engine.run(UserMessage(text))).status
+
+
+def test_delegation_is_off_by_default_and_needs_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    openai_env(monkeypatch, tmp_path)
+    off = ScriptedProvider([reply("Oi.")])
+    assert run_with(monkeypatch, off, "Oi.") is RunStatus.COMPLETED
+    assert "delegate" not in {spec.name for spec in off.requests[0].tools}
+
+    monkeypatch.setenv("NEOSON_DELEGATION_ENABLED", "true")
+    monkeypatch.setenv("NEOSON_DELEGATION_MAX_OUTPUT_TOKENS", "300")
+    arguments = {"task": "Resuma.", "context": "trecho escolhido"}
+    on = ScriptedProvider(
+        [call_tool("delegate", arguments), reply("Resumo."), reply("Final.")]
+    )
+    assert run_with(monkeypatch, on, "pedido-do-pai") is RunStatus.COMPLETED
+    parent, child, _ = on.requests
+    assert "delegate" in {spec.name for spec in parent.tools}
+    assert child.tools == () and child.max_output_tokens == 300
+    assert child.model_profile == parent.model_profile
+    assert "pedido-do-pai" not in str(child.messages)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("NEOSON_MAX_SUBAGENTS", "0"),
+        ("NEOSON_DELEGATION_MAX_OUTPUT_TOKENS", "16000"),
+    ],
+)
+def test_inconsistent_delegation_limits_are_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str, value: str
+) -> None:
+    openai_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("NEOSON_DELEGATION_ENABLED", "true")
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigError, match=name):
+        build_engine(load_settings(env_file=None))
+
+
+def test_runtime_hash_only_changes_when_delegation_is_enabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    openai_env(monkeypatch, tmp_path)
+    disabled = runtime_hash(load_settings(env_file=None))
+    monkeypatch.setenv("NEOSON_DELEGATION_TIMEOUT_SECONDS", "30")
+    assert runtime_hash(load_settings(env_file=None)) == disabled
+
+    monkeypatch.setenv("NEOSON_DELEGATION_ENABLED", "true")
+    enabled = runtime_hash(load_settings(env_file=None))
+    monkeypatch.setenv("NEOSON_MAX_SUBAGENTS", "1")
+    assert len({disabled, enabled, runtime_hash(load_settings(env_file=None))}) == 3

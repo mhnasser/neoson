@@ -49,6 +49,15 @@ class Usage:
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
 
+    @property
+    def is_valid(self) -> bool:
+        """Contagens inteiras e não negativas, com o cache contido na entrada."""
+        counts = (self.input_tokens, self.output_tokens, self.cached_tokens)
+        return (
+            all(type(n) is int and n >= 0 for n in counts)
+            and self.cached_tokens <= self.input_tokens
+        )
+
     def __add__(self, other: "Usage") -> "Usage":
         return Usage(
             input_tokens=self.input_tokens + other.input_tokens,
@@ -71,11 +80,24 @@ class LLMResponse:
 
 
 class LLMError(Exception):
-    """Falha ao consultar o modelo. `retryable` indica erro temporário."""
+    """Falha ao consultar o modelo. `retryable` indica erro temporário.
 
-    def __init__(self, message: str, *, retryable: bool) -> None:
+    `usage` é o consumo medido pelo fornecedor (`Usage()` quando nada foi enviado);
+    `None` significa consumo desconhecido, que não pode ser tratado como zero.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool,
+        usage: Usage | None = None,
+        model: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.usage = usage
+        self.model = model
 
 
 class LLMProvider(Protocol):

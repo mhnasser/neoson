@@ -62,6 +62,7 @@ class OpenAIProvider:
             raise LLMError(
                 f"Perfil de modelo sem modelo configurado: {request.model_profile}.",
                 retryable=False,
+                usage=Usage(),  # nada foi enviado ao fornecedor
             )
         options: dict[str, Any] = {}
         if request.tools:
@@ -87,11 +88,18 @@ class OpenAIProvider:
                 retryable=isinstance(error, _RETRYABLE),
             ) from None
 
-        return LLMResponse(
-            message=_assistant_message(response.output, response.status),
-            usage=_usage(response.usage),
-            model=response.model,
-        )
+        usage = _usage(response.usage)
+        try:
+            message = _assistant_message(response.output, response.status)
+        except LLMError as error:
+            # A resposta chegou: o consumo medido entra na conta mesmo sem conteúdo.
+            raise LLMError(
+                str(error),
+                retryable=error.retryable,
+                usage=usage if response.usage is not None else None,
+                model=response.model,
+            ) from None
+        return LLMResponse(message=message, usage=usage, model=response.model)
 
 
 def _tool(spec: ToolSpec) -> dict[str, Any]:

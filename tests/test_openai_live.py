@@ -1,6 +1,7 @@
 """Chamadas reais à OpenAI. Só rodam com NEOSON_LIVE_TESTS=1 e a chave configurada."""
 
 import asyncio
+import json
 import os
 from datetime import UTC, date, datetime, time
 from pathlib import Path
@@ -20,6 +21,13 @@ from neoson_core.engine import (
     ToolSpec,
     UserMessage,
 )
+from neoson_core.engine.delegation import (
+    CHILD_SYSTEM,
+    DELEGATE,
+    DelegationLimits,
+    DelegationManager,
+)
+from neoson_core.engine.messages import ToolCall
 from neoson_core.infrastructure.config import load_settings
 from neoson_core.infrastructure.db import connect
 from neoson_core.memory.curated import SqliteCuratedMemory
@@ -287,3 +295,39 @@ def test_live_skill_evaluation_records_reference_cases(
         connection.close()
     assert tuple(row) == (skill_id, 2, 2)
     assert conversations == 0
+
+
+def test_live_delegation_stays_within_the_conservative_reserve() -> None:
+    provider = live_provider()
+    arguments = {
+        "task": "Diga em uma frase quais são os dois compromissos.",
+        "context": "09:00 reunião de equipe; 14:00 consulta no dentista.",
+    }
+    manager = DelegationManager(
+        DelegationLimits(max_attempts=1, max_output_tokens=600, timeout_seconds=60)
+    )
+
+    async def scenario() -> tuple[str, str]:
+        # Um único loop: o cliente HTTP não sobrevive a dois `asyncio.run`.
+        parent = await provider.complete(
+            LLMRequest(
+                model_profile="balanced",
+                messages=(Message(role=Role.USER, content="Responda só: ok"),),
+            )
+        )
+        text = await manager.execute(
+            provider,
+            ToolCall("d1", DELEGATE, arguments),
+            model_profile="balanced",
+            expected_model=parent.model,
+            remaining_seconds=60,
+        )
+        return parent.model, text
+
+    model, text = asyncio.run(scenario())
+    content = json.dumps(arguments, ensure_ascii=False)
+    reserve = len((CHILD_SYSTEM + content).encode("utf-8")) + 256
+    usage = manager.ledger.usage
+    assert text.strip() and "14" in text
+    assert manager.ledger.by_model == {model: usage}
+    assert 0 < usage.input_tokens <= reserve and usage.output_tokens <= 600

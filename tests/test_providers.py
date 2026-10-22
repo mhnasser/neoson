@@ -291,3 +291,19 @@ def test_empty_incomplete_response_is_a_retryable_error() -> None:
         asyncio.run(openai_provider(Recorder(body=body)).complete(request()))
 
     assert caught.value.retryable
+    # A resposta chegou e foi cobrada: o uso medido acompanha o erro.
+    assert caught.value.usage == Usage(30, 7, 12)
+    assert caught.value.model == "modelo-x-2026"
+
+
+def test_errors_distinguish_nothing_sent_from_unknown_usage() -> None:
+    unknown_profile = LLMRequest(
+        model_profile="sem-modelo", messages=(Message(role=Role.USER, content="oi"),)
+    )
+    with pytest.raises(LLMError) as not_sent:
+        asyncio.run(openai_provider(Recorder()).complete(unknown_profile))
+    with pytest.raises(LLMError) as http:
+        asyncio.run(openai_provider(Recorder(status=500)).complete(request()))
+
+    assert not_sent.value.usage == Usage()
+    assert http.value.usage is None and http.value.retryable

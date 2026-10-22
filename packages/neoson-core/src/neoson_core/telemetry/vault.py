@@ -77,6 +77,11 @@ def render_daily(metrics: DailyMetrics) -> str:
             "cache_pct": metrics.cache_pct,
             "custo_usd": metrics.cost_usd,
             "execucoes_sem_custo": metrics.runs_without_cost,
+            "execucoes_uso_incompleto": metrics.runs_usage_incomplete,
+            "delegacoes": metrics.delegation_attempts,
+            "delegacoes_falhas": metrics.delegation_failed,
+            "delegacoes_recusadas": metrics.delegation_rejected,
+            "tokens_delegacao": metrics.delegation_tokens,
             "modelos": list(metrics.models),
         }
     )
@@ -93,7 +98,12 @@ def render_daily(metrics: DailyMetrics) -> str:
         f"| Sucesso | {_pct(metrics.success_pct)} |\n"
         f"| Tokens (entrada / saída / cache) | {metrics.input_tokens} / "
         f"{metrics.output_tokens} / {metrics.cached_tokens} |\n"
-        f"| Custo estimado | {_usd(metrics.cost_usd)} |\n\n"
+        f"| Custo estimado | {_usd(metrics.cost_usd)} |\n"
+        f"| Execuções com uso incompleto | {metrics.runs_usage_incomplete} |\n"
+        "| Delegações (tentativas / falhas / recusadas) | "
+        f"{metrics.delegation_attempts} / {metrics.delegation_failed} / "
+        f"{metrics.delegation_rejected} |\n"
+        f"| Tokens de delegação | {metrics.delegation_tokens} |\n\n"
         "## Execuções por modelo\n\n| Modelo | Execuções |\n|---|---|\n"
         f"{models or '| — | 0 |'}\n"
     )
