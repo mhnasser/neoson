@@ -1,0 +1,164 @@
+{
+  "id": "graph-retrieval-seed",
+  "version": "1",
+  "schema_version": 1,
+  "description": "Casos sintéticos para comparar a busca só no histórico com a recuperação híbrida. Nomes e projetos são fictícios.",
+  "sessions": [
+    {
+      "key": "atlas_banco",
+      "started_at": "2026-09-02T12:00:00+00:00",
+      "messages": [
+        {"role": "user", "content": "Vamos usar SQLite como banco principal do projeto Atlas."},
+        {"role": "assistant", "content": "Combinado: SQLite será o banco principal do Atlas."}
+      ]
+    },
+    {
+      "key": "orion_reuniao",
+      "started_at": "2026-09-05T15:00:00+00:00",
+      "messages": [
+        {"role": "user", "content": "A reunião de planejamento do Orion ficou para sexta."},
+        {"role": "assistant", "content": "Anotado: planejamento do Orion na sexta."}
+      ]
+    },
+    {
+      "key": "bruno_painel",
+      "started_at": "2026-09-10T10:00:00+00:00",
+      "messages": [
+        {"role": "user", "content": "O Bruno vai revisar o painel de custos esta semana."},
+        {"role": "assistant", "content": "Certo, o Bruno revisa o painel de custos."}
+      ]
+    },
+    {
+      "key": "preferencia_manha",
+      "started_at": "2026-09-12T08:00:00+00:00",
+      "messages": [
+        {"role": "user", "content": "Prefiro respostas curtas pela manhã."},
+        {"role": "assistant", "content": "Entendido: respostas curtas pela manhã."}
+      ]
+    }
+  ],
+  "facts": [
+    {
+      "subject": {"kind": "Person", "name": "Lia Prado"},
+      "relation": "WORKS_ON",
+      "object": {"kind": "Project", "name": "Atlas"},
+      "source": "memory_fact:1",
+      "observed_at": "2026-09-01T09:00:00+00:00",
+      "confidence": 0.9,
+      "status": "active"
+    },
+    {
+      "subject": {"kind": "Person", "name": "Lia Prado"},
+      "relation": "DECIDED",
+      "object": {"kind": "Decision", "name": "Usar SQLite no Atlas"},
+      "source": "memory_fact:2",
+      "observed_at": "2026-09-02T12:05:00+00:00",
+      "confidence": 0.85,
+      "status": "active"
+    },
+    {
+      "subject": {"kind": "Project", "name": "Orion"},
+      "relation": "DEPENDS_ON",
+      "object": {"kind": "Project", "name": "Atlas"},
+      "source": "memory_fact:3",
+      "observed_at": "2026-09-06T11:00:00+00:00",
+      "confidence": 0.8,
+      "status": "active"
+    },
+    {
+      "subject": {"kind": "Person", "name": "Lia Prado"},
+      "relation": "WORKS_ON",
+      "object": {"kind": "Project", "name": "Orion"},
+      "source": "memory_fact:4",
+      "observed_at": "2026-09-07T11:00:00+00:00",
+      "confidence": 0.6,
+      "status": "pending"
+    },
+    {
+      "subject": {"kind": "Person", "name": "Bruno Reis"},
+      "relation": "WORKS_ON",
+      "object": {"kind": "Project", "name": "Atlas"},
+      "source": "memory_fact:5",
+      "observed_at": "2026-09-08T11:00:00+00:00",
+      "confidence": 0.7,
+      "status": "retracted"
+    },
+    {
+      "subject": {"kind": "Person", "name": "Bruno Reis"},
+      "relation": "WORKS_ON",
+      "object": {"kind": "Project", "name": "Painel de custos"},
+      "source": "memory_fact:6",
+      "observed_at": "2026-09-10T10:05:00+00:00",
+      "confidence": 0.9,
+      "status": "active"
+    },
+    {
+      "subject": {"kind": "Project", "name": "Atlas"},
+      "relation": "MENTIONS",
+      "object": {"kind": "Concept", "name": "Grafo de conhecimento"},
+      "source": "memory_fact:7",
+      "observed_at": "2026-09-11T10:00:00+00:00",
+      "confidence": 0.75,
+      "status": "active"
+    }
+  ],
+  "cases": [
+    {
+      "id": "historico_banco",
+      "query": "SQLite banco Atlas",
+      "question": "Qual banco decidimos usar no projeto Atlas?",
+      "expected_sources": ["session:atlas_banco"],
+      "answer_keywords": ["SQLite"]
+    },
+    {
+      "id": "grafo_projeto_lia",
+      "query": "Lia Prado",
+      "question": "Em qual projeto a Lia Prado trabalha?",
+      "expected_sources": ["memory_fact:1"],
+      "forbidden_sources": ["memory_fact:4"],
+      "answer_keywords": ["Atlas"]
+    },
+    {
+      "id": "ambos_dependencia_orion",
+      "query": "Orion",
+      "question": "O Orion depende de qual projeto e quando é o planejamento?",
+      "expected_sources": ["session:orion_reuniao", "memory_fact:3"],
+      "answer_keywords": ["Atlas", "sexta"]
+    },
+    {
+      "id": "ambos_bruno",
+      "query": "Bruno",
+      "question": "Em que o Bruno está trabalhando?",
+      "expected_sources": ["session:bruno_painel", "memory_fact:6"],
+      "forbidden_sources": ["memory_fact:5"],
+      "answer_keywords": ["painel"]
+    },
+    {
+      "id": "grafo_variacao_nome",
+      "query": "lia   PRADO decisão",
+      "question": "O que a Lia Prado decidiu?",
+      "expected_sources": ["memory_fact:2"],
+      "answer_keywords": ["SQLite"]
+    },
+    {
+      "id": "historico_preferencia",
+      "query": "respostas curtas manhã",
+      "question": "Como prefiro as respostas pela manhã?",
+      "expected_sources": ["session:preferencia_manha"],
+      "answer_keywords": ["curtas"]
+    },
+    {
+      "id": "grafo_conceito_atlas",
+      "query": "Atlas grafo",
+      "question": "Que conceito aparece ligado ao Atlas?",
+      "expected_sources": ["memory_fact:7"],
+      "answer_keywords": ["grafo"]
+    },
+    {
+      "id": "nada_relacionado",
+      "query": "orçamento viagem Lisboa",
+      "question": "Qual é o orçamento da viagem a Lisboa?",
+      "expected_sources": []
+    }
+  ]
+}

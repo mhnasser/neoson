@@ -83,6 +83,41 @@ motivo, sem o texto da memória nem a mensagem do fornecedor.
 | `source_forgotten` | A memória foi esquecida antes do fim; nada foi gravado |
 | `attempt_limit` | Tentativas esgotadas |
 
+## Avaliar com e sem grafo
+
+`neoson-graph eval` compara a busca só no histórico com a recuperação híbrida, nos
+mesmos casos do [dataset sintético](../../datasets/graph_retrieval/README.md). Um banco
+temporário é semeado a partir do dataset; o banco real não participa.
+
+```bash
+uv run --no-sync python -m neoson_worker.graph_main eval
+uv run --no-sync python -m neoson_worker.graph_main eval --live --max-cases 4
+```
+
+O relatório completo vai para `data/graph-eval/graph-eval-<data>.json` (`--output`
+muda a pasta). O painel `Dashboard/Grafo-Avaliacao.md` do vault mostra só os agregados
+e os IDs de caso.
+
+| Métrica | Definição |
+|---|---|
+| Recall de fontes | Média, nos casos com fonte esperada, da fração de fontes esperadas que a busca trouxe |
+| Casos com todas as fontes | Fração dos casos com fonte esperada em que todas vieram |
+| Casos com fonte pendente/retirada | Fração dos casos que trouxeram uma fonte proibida; deve ser 0 |
+| Fontes não esperadas por caso | Média de fontes trazidas além das esperadas (ruído) |
+| Contexto médio | Tamanho médio do resultado entregue ao modelo, em caracteres |
+| Respostas com as palavras esperadas | Só em `--live`: fração das respostas do modelo que contêm todas as palavras do caso |
+| Tokens e custo | Só em `--live`: soma das execuções do braço; custo vazio sem preço configurado |
+
+O modo padrão é determinístico: sem modelo, sem custo, e o mesmo dataset gera o mesmo
+resultado. `--live` faz, por caso e por braço, uma execução do Agent Loop com o modelo
+real (em geral duas chamadas); use `--max-cases` para limitar o gasto. Os dois braços
+usam as mesmas regras, casos e limites; só o grafo muda.
+
+Limites: o dataset é pequeno e sintético. Ele mede a mecânica da recuperação, não a
+qualidade com os seus dados. Conferir palavras na resposta é um critério mínimo, não
+uma avaliação humana. Ganho em recall vem com mais contexto e mais fontes não pedidas,
+e a tabela mostra os dois lados.
+
 ## Neo4j (opcional)
 
 O padrão guarda o grafo no próprio SQLite. Para usar um servidor Neo4j

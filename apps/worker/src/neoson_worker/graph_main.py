@@ -2,7 +2,9 @@
 
 import argparse
 import asyncio
+import tempfile
 from collections.abc import Sequence
+from pathlib import Path
 
 from neoson_core.engine.graph import GraphStore, check_limit
 from neoson_core.infrastructure.config import ConfigError, ServerSettings, load_settings
@@ -11,6 +13,9 @@ from neoson_core.memory.graph_extraction import GraphExtractor, GraphLimits
 from neoson_core.memory.graph_review import decide, pending_facts
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.telemetry.pricing import Price
+from neoson_worker.graph_eval import evaluate, export_panel, load_dataset, save_report
+
+DEFAULT_DATASET = Path("datasets/graph_retrieval/seed-v1.json")
 
 
 def limits_for(settings: ServerSettings) -> GraphLimits:
@@ -87,6 +92,60 @@ async def show_pending(store: GraphStore, limit: int) -> None:
         )
 
 
+def run_evaluation(args: argparse.Namespace) -> int:
+    """Banco temporário semeado pelo dataset: os dados reais não participam."""
+    try:
+        settings = load_settings()
+        if args.max_cases is not None and not 1 <= args.max_cases <= 100:
+            raise ValueError("--max-cases deve estar entre 1 e 100.")
+        dataset, checksum = load_dataset(args.dataset)
+        provider = live_provider(settings) if args.live else None
+    except (ConfigError, ValueError, OSError) as error:
+        raise SystemExit(str(error)) from None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as workdir:
+        report = asyncio.run(
+            evaluate(
+                dataset,
+                checksum,
+                Path(workdir),
+                provider=provider,
+                profile=settings.primary_model_profile,
+                prices=prices_for(settings),
+                max_cases=args.max_cases,
+            )
+        )
+    path = save_report(report, args.output)
+    export_panel(report, settings.vault_path)
+    history, hybrid = report["arms"]["history"], report["arms"]["hybrid"]
+    for key in history:
+        print(f"{key}: só histórico {history[key]} | híbrido {hybrid[key]}")
+    print(f"relatório: {path}")
+    return 0
+
+
+def live_provider(settings: ServerSettings) -> OpenAIProvider:
+    if (
+        settings.llm_provider != "openai"
+        or not settings.openai_api_key
+        or not settings.llm_model
+    ):
+        raise ConfigError("--live exige OpenAI, OPENAI_API_KEY e NEOSON_LLM_MODEL.")
+    return OpenAIProvider.from_api_key(
+        settings.openai_api_key.get_secret_value(),
+        {settings.primary_model_profile: settings.llm_model},
+        settings.run_timeout_seconds,
+        reasoning_effort=settings.llm_reasoning_effort,
+        max_retries=0,
+    )
+
+
+def prices_for(settings: ServerSettings) -> dict[str, Price]:
+    return {
+        m: Price(p.input, p.output, p.cached_input)
+        for m, p in settings.llm_prices.items()
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="neoson-graph")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -99,7 +158,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     retract = commands.add_parser("retract", help="retira fatos com um motivo")
     retract.add_argument("ids", nargs="+")
     retract.add_argument("--reason", required=True)
+    evaluation = commands.add_parser("eval", help="compara a busca com e sem grafo")
+    evaluation.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    evaluation.add_argument(
+        "--live", action="store_true", help="responde com o modelo real (tem custo)"
+    )
+    evaluation.add_argument("--max-cases", type=int)
+    evaluation.add_argument("--output", type=Path, default=Path("data/graph-eval"))
     args = parser.parse_args(argv)
+    if args.command == "eval":
+        return run_evaluation(args)
     try:
         settings = load_settings()
         store = graph_store(settings)
@@ -127,3 +195,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
