@@ -20,7 +20,15 @@ from neoson_core.infrastructure.db import integrity_ok, schema_version
 MANIFEST = "manifest.json"
 DB_FILE = "neoson.db"
 VAULT_DIR = "vault"
-COUNTED_TABLES = ("sessions", "messages", "runs", "outbox_events", "memory_facts")
+COUNTED_TABLES = (
+    "sessions",
+    "messages",
+    "runs",
+    "outbox_events",
+    "memory_facts",
+    "graph_entities",
+    "graph_facts",
+)
 
 
 class BackupError(Exception):
