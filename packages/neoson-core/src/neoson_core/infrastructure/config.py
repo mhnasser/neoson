@@ -69,6 +69,11 @@ class ServerSettings(BaseSettings):
     vault_path: Path = Path("data/NeoSon-Vault")
     backup_path: Path = Path("data/backups")
     skills_path: Path = Path("skill_library")
+    # Originais dos documentos ingeridos (privados, fora do vault e do backup SQLite).
+    documents_path: Path = Path("data/documents")
+    document_max_bytes: int = Field(default=2_000_000, ge=1024, le=20_000_000)
+    document_max_chars: int = Field(default=200_000, ge=100, le=2_000_000)
+    document_chunk_chars: int = Field(default=3000, ge=200, le=20_000)
 
     primary_model_profile: str = "balanced"
     router_policy: str = "rules-v1"

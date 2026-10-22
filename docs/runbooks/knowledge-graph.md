@@ -2,7 +2,8 @@
 
 O grafo guarda entidades e relações com a fonte de cada fato
 ([ADR-014](../decisions/ADR-014-Knowledge-Graph.md)). Nesta versão a fonte é a memória
-curada: o que você pediu para o NeoSon lembrar. Um modelo propõe as relações, e nada é
+curada (o que você pediu para o NeoSon lembrar) e os
+[documentos ingeridos](documentos.md). Um modelo propõe as relações, e nada é
 usado antes da sua revisão ([ADR-015](../decisions/ADR-015-Graph-Extraction.md)).
 
 ## Ligar

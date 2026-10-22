@@ -43,7 +43,8 @@ HANDLER_NAME = "memory.graph.schedule"
 RETRACT_REASON = "fonte esquecida"
 MAX_OUTPUT_CHARS = 16000
 SYSTEM = (
-    "Você extrai relações verificáveis de uma memória registrada pelo usuário. "
+    "Você extrai relações verificáveis de um texto do usuário: uma memória "
+    "registrada ou um trecho de documento. "
     'Responda somente JSON: {"facts": [{"subject": {"kind": K, "name": N}, '
     '"relation": R, "object": {"kind": K, "name": N}, "confidence": C}]}. '
     "K: " + ", ".join(kind.value for kind in EntityKind) + ". "
@@ -250,20 +251,11 @@ class GraphExtractor:
             if row["kind"] == "retract":
                 self._lease(c, row["id"], claim_id, lease)
                 return _Claim(row["id"], claim_id, "retract", row["source_id"])
-            memory = c.execute(
-                "SELECT content, created_at, status FROM memory_facts WHERE id = ?",
-                (row["memory_fact_id"],),
-            ).fetchone()
-            if memory is None or memory["status"] != "active":
+            source = _source_text(c, row)
+            if source is None:
                 self._close(c, row["id"], "stale", "source_forgotten")
                 return None
-            text = json.dumps(
-                {
-                    "memoria": memory["content"],
-                    "registrada_em": memory["created_at"][:10],
-                },
-                ensure_ascii=False,
-            )
+            text, observed = source
             if len(text) + len(SYSTEM) > limits.max_input_chars:
                 self._close(c, row["id"], "failed", "input_limit")
                 return None
@@ -320,7 +312,7 @@ class GraphExtractor:
                 "extract",
                 row["source_id"],
                 row["memory_fact_id"],
-                datetime.fromisoformat(memory["created_at"]),
+                observed,
                 LLMRequest(
                     self.profile,
                     (Message(Role.SYSTEM, SYSTEM), Message(Role.USER, text)),
@@ -385,9 +377,10 @@ class GraphExtractor:
     def _source_active(self, claim: _Claim) -> bool:
         with closing(connect(self.path)) as c:
             row = c.execute(
-                "SELECT m.status FROM graph_jobs j JOIN memory_facts m"
-                " ON m.id = j.memory_fact_id WHERE j.id = ? AND j.claim_id = ?"
-                " AND j.status = 'leased'",
+                "SELECT COALESCE(m.status, d.status) FROM graph_jobs j"
+                " LEFT JOIN memory_facts m ON m.id = j.memory_fact_id"
+                " LEFT JOIN documents d ON d.id = j.document_id"
+                " WHERE j.id = ? AND j.claim_id = ? AND j.status = 'leased'",
                 (claim.job_id, claim.claim_id),
             ).fetchone()
         return row is not None and row[0] == "active"
@@ -475,6 +468,38 @@ class GraphExtractor:
     def _defer(c: sqlite3.Connection, job_id: str, error: str) -> None:
         # Fica pendente para outro dia; não conta tentativa.
         c.execute("UPDATE graph_jobs SET last_error = ? WHERE id = ?", (error, job_id))
+
+
+def _source_text(
+    c: sqlite3.Connection, row: sqlite3.Row
+) -> tuple[str, datetime] | None:
+    """Texto da fonte como dado JSON e a data observada; `None` se esquecida."""
+    if row["document_id"] is not None:
+        chunk = c.execute(
+            "SELECT d.ingested_at, k.text FROM documents d JOIN document_chunks k"
+            " ON k.document_id = d.id AND k.n = ?"
+            " WHERE d.id = ? AND d.status = 'active'",
+            (row["chunk"], row["document_id"]),
+        ).fetchone()
+        if chunk is None:
+            return None
+        payload = {
+            "documento": chunk["text"],
+            "registrado_em": chunk["ingested_at"][:10],
+        }
+        return json.dumps(payload, ensure_ascii=False), datetime.fromisoformat(
+            chunk["ingested_at"]
+        )
+    memory = c.execute(
+        "SELECT content, created_at, status FROM memory_facts WHERE id = ?",
+        (row["memory_fact_id"],),
+    ).fetchone()
+    if memory is None or memory["status"] != "active":
+        return None
+    payload = {"memoria": memory["content"], "registrada_em": memory["created_at"][:10]}
+    return json.dumps(payload, ensure_ascii=False), datetime.fromisoformat(
+        memory["created_at"]
+    )
 
 
 def _entity(value: object) -> Entity:

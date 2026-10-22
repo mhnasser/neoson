@@ -28,6 +28,7 @@ COUNTED_TABLES = (
     "memory_facts",
     "graph_entities",
     "graph_facts",
+    "documents",
 )
 
 

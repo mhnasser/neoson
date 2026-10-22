@@ -159,6 +159,12 @@ segue o formato `ErrorResponse`:
 
 Documentação interativa (OpenAPI) em `/docs`.
 
+### Documentos
+
+`neoson-docs` ingere arquivos `.md` e `.txt`: preserva o original pelo hash, cria uma nota
+inerte no vault e, com o grafo ligado, propõe fatos para revisão. Veja
+[`docs/runbooks/documentos.md`](docs/runbooks/documentos.md).
+
 ### Logs e resiliência
 
 Gateway, bot e worker podem registrar logs em JSON, com segredos conhecidos mascarados e

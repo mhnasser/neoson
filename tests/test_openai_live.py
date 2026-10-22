@@ -362,3 +362,24 @@ def test_live_graph_extraction_follows_the_contract(tmp_path: Path) -> None:
     assert [tuple(j) for j in jobs] == [("completed", None)]
     assert facts and all(f.status is FactStatus.PENDING for f in facts)
     assert any(f.relation is Relation.WORKS_ON for f in facts)
+
+
+def test_live_document_chunk_extraction(tmp_path: Path) -> None:
+    from neoson_core.memory.documents import DocumentStore
+
+    db = tmp_path / "docs.db"
+    source = tmp_path / "plano.md"
+    source.write_text(
+        "# Plano\n\nA Lia Prado coordena o projeto Atlas desde setembro.",
+        encoding="utf-8",
+    )
+    doc = DocumentStore(db, tmp_path / "originais", tmp_path / "vault").ingest(
+        source, extract=True
+    )
+    store = SqliteGraphStore(db)
+    assert asyncio.run(GraphExtractor(db, live_provider(), store).run_once())
+    facts = asyncio.run(
+        store.list_facts(statuses=(FactStatus.PENDING, FactStatus.ACTIVE), limit=20)
+    )
+    assert facts and all(f.status is FactStatus.PENDING for f in facts)
+    assert {f.provenance.source_id for f in facts} == {f"document:{doc.id}:0"}
