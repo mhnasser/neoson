@@ -52,6 +52,14 @@ dúvida.
 Um fato retirado não volta. Ativar não muda outros fatos: versões de fontes diferentes
 continuam separadas.
 
+## Painel
+
+`Dashboard/Memory-Intelligence.md` mostra só contagens: memórias curadas, fatos por
+estado e tipo de fonte, pendentes de revisão, contradições (o mesmo trio ativo numa fonte
+e retirado em outra), trios confirmados por mais de uma fonte, jobs de extração e erros
+que pedem atenção, e documentos. É atualizado pelo worker a cada evento de memória e
+pelas CLIs `neoson-graph` e `neoson-docs` depois de cada mudança.
+
 ## Usar nas respostas
 
 Com o grafo ligado, a ferramenta `memory_search` acrescenta aos trechos de conversa os

@@ -142,7 +142,8 @@ def render_home(
         + "\n\nPainéis: [[Dashboard/LLM-Custos|LLM & Custos]] · "
         "[[Dashboard/NeoSon-System|NeoSon System]] · "
         "[[Dashboard/Skills-Learning|Skills & Learning]] · "
-        "[[Dashboard/Router-Lab|Router Lab]]\n"
+        "[[Dashboard/Router-Lab|Router Lab]] · "
+        "[[Dashboard/Memory-Intelligence|Memory Intelligence]]\n"
     )
 
 

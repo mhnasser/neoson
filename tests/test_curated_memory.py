@@ -189,7 +189,9 @@ def test_memory_is_exported_to_the_vault_for_review(tmp_path: Path) -> None:
     }
     assert f"**#{fact.id}** Prefere respostas curtas" in text
     assert "Mora em outra cidade" not in text
-    assert len(changed) == 2 and again == []
+    # Duas notas de memória e o painel Memory Intelligence.
+    assert len(changed) == 3 and again == []
+    assert any(path.name == "Memory-Intelligence.md" for path in changed)
 
 
 def test_worker_routes_memory_events_to_the_vault_exporter(

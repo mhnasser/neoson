@@ -10,6 +10,8 @@ from pathlib import Path
 
 from neoson_core.engine import MemoryFact, OutboxEvent
 from neoson_core.memory.curated import fact_from_row
+from neoson_core.telemetry.memory_metrics import PANEL as MEMORY_PANEL
+from neoson_core.telemetry.memory_metrics import memory_metrics, render_memory
 from neoson_core.telemetry.vault import frontmatter, write_atomic
 
 HANDLER_NAME = "memory.vault"
@@ -58,6 +60,9 @@ class MemoryVaultExporter:
             )
             if write_atomic(self._vault / relative, text):
                 changed.append(self._vault / relative)
+        panel = render_memory(memory_metrics(connection))
+        if write_atomic(self._vault / MEMORY_PANEL, panel):
+            changed.append(self._vault / MEMORY_PANEL)
         return changed
 
     def _line(self, fact: MemoryFact) -> str:

@@ -57,6 +57,10 @@ regerar tudo a partir do banco, use `neoson-worker --export-vault`; para desliga
 `NEOSON_METRICS_EXPORT_ENABLED=false`. O custo usa os preços de `NEOSON_LLM_PRICES` (USD por
 milhão de tokens, por modelo); sem preço, aparece como —.
 
+`Dashboard/Memory-Intelligence.md` mostra contagens da memória: memórias curadas, fatos do
+grafo por estado e tipo de fonte, fila de revisão, contradições, jobs de extração e documentos,
+sem nomes nem textos.
+
 `Dashboard/Skills-Learning.md` mostra o histórico por versão das skills: estado, execuções,
 sucesso, tokens, custo conhecido e última avaliação. Cada skill ativa tem uma nota com
 frontmatter em `Skills/Ativas/<id>.md`; rollback atualiza essa nota e retirada remove a nota

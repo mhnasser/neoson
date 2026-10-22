@@ -6,6 +6,7 @@ from pathlib import Path
 
 from neoson_core.infrastructure.config import ConfigError, ServerSettings, load_settings
 from neoson_core.memory.documents import DocumentLimits, DocumentRejected, DocumentStore
+from neoson_worker.panels import refresh_memory_panel
 
 
 def store_for(settings: ServerSettings) -> DocumentStore:
@@ -41,6 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = store.ingest(args.path, extract=settings.memory_graph_enabled)
         except DocumentRejected as error:
             raise SystemExit(f"Documento recusado: {error}") from None
+        refresh_memory_panel(settings)
         state = "ingerido" if result.created else "já existia"
         print(f"{result.id} | {state} | {result.chunks} trecho(s) | {result.title}")
         if result.created and not settings.memory_graph_enabled:
@@ -59,6 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not store.forget(args.id):
         print("Documento não encontrado ou já esquecido.")
         return 1
+    refresh_memory_panel(settings)
     print(f"{args.id} | esquecido")
     return 0
 

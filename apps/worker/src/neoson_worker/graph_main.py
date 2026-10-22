@@ -3,7 +3,7 @@
 import argparse
 import asyncio
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from neoson_core.engine.graph import GraphStore, check_limit
@@ -14,6 +14,7 @@ from neoson_core.memory.graph_review import decide, pending_facts
 from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.telemetry.pricing import Price
 from neoson_worker.graph_eval import evaluate, export_panel, load_dataset, save_report
+from neoson_worker.panels import refresh_memory_panel
 
 DEFAULT_DATASET = Path("datasets/graph_retrieval/seed-v1.json")
 
@@ -61,9 +62,16 @@ def build_extractor(settings: ServerSettings, store: GraphStore) -> GraphExtract
     )
 
 
-async def run(extractor: GraphExtractor, once: bool, poll_seconds: float) -> None:
+async def run(
+    extractor: GraphExtractor,
+    once: bool,
+    poll_seconds: float,
+    refresh: Callable[[], None] = lambda: None,
+) -> None:
     while True:
         worked = await extractor.run_once()
+        if worked:
+            refresh()
         if once:
             return
         if not worked:
@@ -179,7 +187,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(str(error)) from None
     try:
         if args.command == "run":
-            asyncio.run(run(extractor, args.once, settings.worker_poll_seconds))
+            asyncio.run(
+                run(
+                    extractor,
+                    args.once,
+                    settings.worker_poll_seconds,
+                    lambda: refresh_memory_panel(settings),
+                )
+            )
         elif args.command == "pending":
             asyncio.run(show_pending(store, args.limit))
         else:
@@ -191,6 +206,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise SystemExit(str(error)) from None
             for fact_id, changed in results.items():
                 print(f"{fact_id}: {'ok' if changed else 'não alterado'}")
+            refresh_memory_panel(settings)
             return 0 if all(results.values()) else 1
     except KeyboardInterrupt:
         pass
