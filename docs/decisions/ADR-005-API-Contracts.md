@@ -119,3 +119,12 @@ payload = message.model_dump(mode="json")
   juntos.
 - A Pi instala Pydantic.
 - Cada contrato novo precisa de teste de compatibilidade com a versão anterior.
+
+## Atualização — 2026-10-22: consultas
+
+`neoson_contracts.api.v1.queries` acrescenta os modelos das consultas previstas na
+especificação (§12): `RunResponse`, `SessionResponse` (paginação por cursor `before`,
+só mensagens do usuário e do assistente), `ReadyResponse` e `MetricsSummary`. São
+modelos novos na mesma versão 1, sem mudar os existentes. As consultas exigem o mesmo
+bearer, exceto `health/ready`, que só devolve booleanos. Execução e sessão respondem com
+`Cache-Control: no-store`.

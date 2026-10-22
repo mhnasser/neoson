@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 from collections.abc import Awaitable, Callable, Mapping
 from http import HTTPStatus
@@ -15,11 +16,14 @@ from neoson_contracts.api.v1.messages import (
     MessageResponse,
     MessageStatus,
 )
+from neoson_contracts.api.v1.queries import ReadyResponse
 from neoson_core.engine import Engine, RunStatus, SessionNotFound, UserMessage
 from neoson_core.engine.actions import ActionConflict, ActionNotFound, ActionService
 from neoson_core.engine.voice import VoicePipeline
+from neoson_core.memory.queries import readiness
 from neoson_gateway import __version__
 from neoson_gateway.actions import HTTP_OWNER, actions_router
+from neoson_gateway.queries import QueryConfig, queries_router
 from neoson_gateway.voice import voice_router
 
 health = APIRouter(prefix="/api/v1/health", tags=["health"])
@@ -111,12 +115,33 @@ def create_app(
     api_token: str,
     actions: ActionService | None = None,
     voice: VoicePipeline | None = None,
+    queries: QueryConfig | None = None,
 ) -> FastAPI:
     if not api_token:
         raise ValueError("O gateway exige um token de API.")
     app = FastAPI(title="NeoSon Gateway", version=__version__)
     app.include_router(health)
     app.include_router(messages_router(engine, api_token))
+    if queries is not None:
+        app.include_router(queries_router(queries, require_token(api_token)))
+
+    @app.get(
+        "/api/v1/health/ready",
+        response_model=ReadyResponse,
+        responses={503: {"model": ReadyResponse}},
+        tags=["health"],
+    )
+    async def ready() -> JSONResponse:
+        """Dependências mínimas: banco e migrações. Não chama o modelo."""
+        checks = (
+            await asyncio.to_thread(readiness, queries.db)
+            if queries is not None
+            else {}
+        )
+        ok = all(checks.values())
+        body = ReadyResponse(status="ready" if ok else "not_ready", checks=checks)
+        return JSONResponse(status_code=200 if ok else 503, content=body.model_dump())
+
     if voice is not None:
         app.include_router(voice_router(voice, require_token(api_token)))
     if actions is not None:

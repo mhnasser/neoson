@@ -7,6 +7,7 @@ from neoson_gateway.composition import (
     api_token,
     build_actions,
     build_engine,
+    build_queries,
     build_voice,
 )
 
@@ -30,7 +31,13 @@ def main() -> None:
     )
     # Sem log_config próprio: os logs do uvicorn seguem o formato configurado acima.
     uvicorn.run(
-        create_app(engine, token, actions=build_actions(settings), voice=voice),
+        create_app(
+            engine,
+            token,
+            actions=build_actions(settings),
+            voice=voice,
+            queries=build_queries(settings),
+        ),
         host=settings.gateway_host,
         port=settings.gateway_port,
         log_level=settings.log_level.lower(),

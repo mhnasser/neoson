@@ -52,6 +52,7 @@ from neoson_core.tools.personal_sandbox import (
 from neoson_core.tools.personal_write import CalendarCreate, EmailDraft
 from neoson_core.tools.registry import Tool, ToolRegistry
 from neoson_core.tools.web_fetch import WebFetch, WebFetcher
+from neoson_gateway.queries import QueryConfig
 from neoson_gateway.routing_runtime import (
     BoundProvider,
     binding_for,
@@ -157,6 +158,13 @@ def build_actions(settings: ServerSettings) -> ActionService | None:
         settings.run_timeout_seconds,
         SqliteSkillRegistry(settings.db_path),
     )
+
+
+def build_queries(settings: ServerSettings) -> QueryConfig | None:
+    """Consultas só com o motor que grava conversas (o eco não usa banco)."""
+    if settings.llm_provider == "echo":
+        return None
+    return QueryConfig(settings.db_path, ZoneInfo(settings.timezone))
 
 
 def build_voice(settings: ServerSettings, engine: Engine) -> VoicePipeline | None:

@@ -111,6 +111,10 @@ transcrever e falar. Decisão no [ADR-010](docs/decisions/ADR-010-Voice.md).
 | Método e rota | Uso |
 |---|---|
 | `GET /api/v1/health/live` | Indica que o processo está ativo |
+| `GET /api/v1/health/ready` | Banco acessível e migrações em dia (`503` se não); sem token e sem chamar o modelo |
+| `GET /api/v1/runs/{run_id}` | Estado, resposta final, modelo e tokens de uma execução |
+| `GET /api/v1/sessions/{id}` | Mensagens do usuário e do assistente, mais recentes primeiro (`limit` até 100, `before` para a página anterior) |
+| `GET /api/v1/metrics/summary` | Agregados do dia (`day=AAAA-MM-DD` opcional): execuções, tokens, custo e fila |
 | `POST /api/v1/messages` | Recebe `{"text": "..."}` (e `session_id` opcional) e devolve a resposta e o `session_id`; exige `Authorization: Bearer <NEOSON_API_TOKEN>` |
 | `GET /api/v1/actions` | Lista as ações ainda pendentes ou aprovadas sem execução, inclusive de pedidos por voz |
 | `GET /api/v1/runs/{run_id}/actions` | Lista ações pendentes da execução para revisão autenticada |
