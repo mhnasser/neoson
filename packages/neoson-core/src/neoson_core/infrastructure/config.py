@@ -107,11 +107,18 @@ class ServerSettings(BaseSettings):
     microsoft_write_token_path: Path = Path("data/credentials/microsoft-write.bin")
     personal_sandbox_db_path: Path = Path("data/personal-sandbox.db")
 
-    voice_provider: Literal["disabled", "fake"] = "disabled"
+    voice_provider: Literal["disabled", "fake", "openai"] = "disabled"
     voice_max_bytes: int = Field(default=1048576, ge=44, le=2097152)
     voice_max_seconds: float = Field(default=15, gt=0, le=30)
+    voice_max_output_seconds: float = Field(default=30, gt=0, le=30)
     voice_timeout_seconds: float = Field(default=30, gt=0, le=120)
     voice_max_concurrency: int = Field(default=1, ge=1, le=4)
+    # Só com NEOSON_VOICE_PROVIDER=openai; usa a mesma OPENAI_API_KEY.
+    voice_stt_model: str = "gpt-4o-mini-transcribe"
+    voice_tts_model: str = "gpt-4o-mini-tts"
+    voice_tts_voice: str = "marin"
+    voice_language: str = Field(default="pt", pattern=r"^[a-z]{2}$")
+    voice_max_speech_chars: int = Field(default=400, ge=50, le=2000)
 
     telegram_bot_token: SecretStr | None = None
     telegram_allowed_users: Annotated[list[int], NoDecode] = Field(default_factory=list)

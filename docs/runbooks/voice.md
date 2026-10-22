@@ -1,8 +1,9 @@
 # Pipeline de voz
 
 O gateway recebe uma gravação ativada explicitamente e executa STT → motor → TTS pelas
-portas configuradas. Este incremento oferece somente simulação determinística de
-STT/TTS; não abre microfone nem acessa um fornecedor de fala. A rota vem desligada.
+portas configuradas. Há dois adaptadores: simulação determinística (`fake`) e a API de
+áudio da OpenAI (`openai`). O gateway não abre microfone; a captura é do Robot. A rota
+vem desligada.
 
 ## Testar em simulação
 
@@ -33,13 +34,47 @@ mensagens, com `audio_base64`, `audio_format: wav`, `sample_rate_hz: 16000`,
 não for null e o estado for `ready`. Falha de síntese mantém o resultado textual e IDs;
 não repita a conversa para tentar obter áudio.
 
+## Fala real com a OpenAI
+
+Escolha explícita, desligada por padrão. O áudio de cada pedido e o texto da resposta
+vão para a OpenAI, com a mesma `OPENAI_API_KEY` do modelo, e cada pedido tem custo de
+transcrição e síntese. Antes de usar com outras pessoas por perto, confira a política de
+dados do fornecedor; a escolha do fornecedor de fala é sua.
+
+```dotenv
+NEOSON_VOICE_PROVIDER=openai
+NEOSON_VOICE_STT_MODEL=gpt-4o-mini-transcribe
+NEOSON_VOICE_TTS_MODEL=gpt-4o-mini-tts
+NEOSON_VOICE_TTS_VOICE=marin
+NEOSON_VOICE_LANGUAGE=pt
+NEOSON_VOICE_MAX_SPEECH_CHARS=400
+```
+
+Funciona com o motor OpenAI ou `echo`. A resposta declara `simulated: false`, e a rota
+recusa captura simulada (`X-Neoson-Simulated: true`), então a demonstração fake do
+Robot não serve para esse modo. A síntese recebe PCM de 24 kHz e o converte para WAV
+PCM16 mono de 16 kHz. Respostas longas são faladas só até
+`NEOSON_VOICE_MAX_SPEECH_CHARS`, cortadas no último fim de frase; o texto completo
+continua na resposta. O áudio sintetizado tem até `NEOSON_VOICE_MAX_OUTPUT_SECONDS`
+(30 s, o máximo que o Robot reproduz). O SDK roda sem retentativas, e erros do
+fornecedor viram `503` (transcrição) ou `synthesis_failed` (síntese) sem a mensagem
+original.
+
+Teste ao vivo opcional, com a chave local e frases fictícias (ida e volta de fala e a
+rota real do gateway com o motor eco):
+
+```bash
+NEOSON_LIVE_TESTS=1 uv run --no-sync python -m pytest -q tests/test_openai_speech.py -k live
+```
+
 ## Configuração e erros
 
 | Variável | Padrão | Limite |
 |---|---|---|
-| `NEOSON_VOICE_PROVIDER` | `disabled` | `disabled` ou `fake` |
+| `NEOSON_VOICE_PROVIDER` | `disabled` | `disabled`, `fake` ou `openai` |
 | `NEOSON_VOICE_MAX_BYTES` | 1048576 | Até 2097152, por entrada/saída |
-| `NEOSON_VOICE_MAX_SECONDS` | 15 | Até 30, por áudio |
+| `NEOSON_VOICE_MAX_SECONDS` | 15 | Até 30, por áudio recebido |
+| `NEOSON_VOICE_MAX_OUTPUT_SECONDS` | 30 | Até 30, por áudio sintetizado |
 | `NEOSON_VOICE_TIMEOUT_SECONDS` | 30 | Até 120, prazo total |
 | `NEOSON_VOICE_MAX_CONCURRENCY` | 1 | Até 4, por processo, sem fila |
 
@@ -69,6 +104,8 @@ histórico antes de repetir um pedido incerto. `needs_approval` continua exigind
 mensagem do usuário no histórico privado, quando o motor tem armazenamento. Não registre
 corpos, transcrições, bytes ou exceções de adaptadores nos logs. Não envie áudio privado
 a um fornecedor antes de selecionar/configurar explicitamente esse adaptador.
+`tests/test_openai_speech.py` cobre o adaptador OpenAI com HTTP simulado: campos
+enviados, conversão de áudio, corte de fala e falhas sem texto privado.
 
 `uv run --no-sync python -m pytest -q tests/test_voice.py` valida o formato/transporte,
 ativação/autenticação, cancelamento/timeout/concorrência, falhas de síntese e isolamento

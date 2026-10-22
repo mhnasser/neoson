@@ -101,7 +101,8 @@ Ela preserva apenas a sessão entre reinícios e não abre dispositivos reais.
 O gateway também possui um [pipeline de voz](docs/runbooks/voice.md) com portas STT/TTS
 substituíveis e entrada WAV autenticada/limitada. A rota `/api/v1/voice` vem desativada;
 o modo fake, restrito a echo fora de produção, valida o fluxo com texto constante e
-silêncio, sem comprovar reconhecimento ou fala reais. Decisão no [ADR-010](docs/decisions/ADR-010-Voice.md).
+silêncio. O modo `openai`, escolhido explicitamente, usa a API de áudio da OpenAI para
+transcrever e falar. Decisão no [ADR-010](docs/decisions/ADR-010-Voice.md).
 
 | Método e rota | Uso |
 |---|---|

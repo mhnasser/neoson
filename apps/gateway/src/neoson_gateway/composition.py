@@ -31,6 +31,7 @@ from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
 from neoson_core.providers.fake_speech import FakeSpeech
 from neoson_core.providers.openai_provider import OpenAIProvider
+from neoson_core.providers.openai_speech import OpenAISpeech
 from neoson_core.routing.policy_registry import PolicyRegistry
 from neoson_core.routing.session_router import SessionRouter
 from neoson_core.skills.registry import SqliteSkillRegistry
@@ -149,21 +150,35 @@ def build_actions(settings: ServerSettings) -> ActionService | None:
 def build_voice(settings: ServerSettings, engine: Engine) -> VoicePipeline | None:
     if settings.voice_provider == "disabled":
         return None
-    if settings.llm_provider != "echo" or settings.env == "production":
-        raise ConfigError("Voz fake exige NEOSON_LLM_PROVIDER=echo fora de produção.")
-    speech = FakeSpeech()
-    return VoicePipeline(
-        engine,
-        speech,
-        speech,
-        VoiceLimits(
-            max_bytes=settings.voice_max_bytes,
-            max_seconds=settings.voice_max_seconds,
-            timeout_seconds=settings.voice_timeout_seconds,
-            max_concurrency=settings.voice_max_concurrency,
-        ),
-        simulated=True,
+    limits = VoiceLimits(
+        max_bytes=settings.voice_max_bytes,
+        max_seconds=settings.voice_max_seconds,
+        timeout_seconds=settings.voice_timeout_seconds,
+        max_concurrency=settings.voice_max_concurrency,
+        max_output_seconds=settings.voice_max_output_seconds,
     )
+    if settings.voice_provider == "fake":
+        if settings.llm_provider != "echo" or settings.env == "production":
+            raise ConfigError(
+                "Voz fake exige NEOSON_LLM_PROVIDER=echo fora de produção."
+            )
+        fake = FakeSpeech()
+        return VoicePipeline(engine, fake, fake, limits, simulated=True)
+    if settings.openai_api_key is None:
+        raise ConfigError(
+            "OPENAI_API_KEY é obrigatória com NEOSON_VOICE_PROVIDER=openai."
+        )
+    # Fala real: escolha explícita; o áudio vai à OpenAI e não é guardado.
+    speech = OpenAISpeech.from_api_key(
+        settings.openai_api_key.get_secret_value(),
+        timeout_seconds=settings.voice_timeout_seconds,
+        stt_model=settings.voice_stt_model,
+        tts_model=settings.voice_tts_model,
+        voice=settings.voice_tts_voice,
+        language=settings.voice_language,
+        max_speech_chars=settings.voice_max_speech_chars,
+    )
+    return VoicePipeline(engine, speech, speech, limits)
 
 
 def build_provider(settings: ServerSettings) -> LLMProvider:

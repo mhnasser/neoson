@@ -69,3 +69,15 @@ dispositivos/stream em falhas e nunca faz retry automático. Continuidade entre 
 salva apenas sessão e vínculo ao gateway; não retoma captura/reprodução. Dispositivos
 fake e CLI explícita permitem verificar o fluxo sem drivers. Procedimento em
 [Robot de voz](../runbooks/robot-voice.md).
+
+## Atualização — 2026-10-22: adaptador OpenAI
+
+Primeiro adaptador real das portas, `providers/openai_speech.py`, escolhido só com
+`NEOSON_VOICE_PROVIDER=openai`. Ele usa a chave já configurada para o modelo e transcreve
+o WAV recebido com o idioma informado. A síntese pede PCM cru de 24 kHz e o converte
+para WAV PCM16 mono de 16 kHz, o formato do pipeline e do Robot. A fala de cada resposta
+é limitada a um número de caracteres, cortada no último fim de frase; o áudio
+sintetizado tem limite próprio de duração (até 30 s), separado do limite de entrada.
+Erros do fornecedor carregam só o tipo, e áudio e texto não vão para logs. A conversão
+é linear e sem filtro: suficiente para fala, não para música. O áudio de cada pedido
+passa pelo fornecedor; usar o modo é decisão de quem opera a instalação.

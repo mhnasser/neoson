@@ -36,6 +36,8 @@ class VoiceLimits:
     timeout_seconds: float = 30
     max_concurrency: int = 1
     max_text_chars: int = 8000
+    # Áudio sintetizado; o Robot reproduz no máximo 30 s.
+    max_output_seconds: float = 30
 
     def __post_init__(self) -> None:
         for value, upper in (
@@ -45,7 +47,11 @@ class VoiceLimits:
         ):
             if type(value) is not int or not 1 <= value <= upper:
                 raise ValueError("Limite de voz inválido.")
-        for duration, ceiling in ((self.max_seconds, 30), (self.timeout_seconds, 120)):
+        for duration, ceiling in (
+            (self.max_seconds, 30),
+            (self.timeout_seconds, 120),
+            (self.max_output_seconds, 30),
+        ):
             if not math.isfinite(duration) or not 0 < duration <= ceiling:
                 raise ValueError("Limite de voz inválido.")
 
@@ -66,7 +72,10 @@ class AudioClip:
     seconds: float
 
 
-def read_wav(data: bytes, limits: VoiceLimits) -> AudioClip:
+def read_wav(
+    data: bytes, limits: VoiceLimits, max_seconds: float | None = None
+) -> AudioClip:
+    """`max_seconds` substitui o limite de entrada (ex.: áudio sintetizado)."""
     if not isinstance(data, bytes) or len(data) > limits.max_bytes or len(data) < 44:
         raise InvalidAudio("Áudio inválido ou acima do limite.")
     if (
@@ -110,7 +119,7 @@ def read_wav(data: bytes, limits: VoiceLimits) -> AudioClip:
                 raise InvalidAudio("Use WAV PCM16 mono de 16 kHz.")
             frames = source.getnframes()
             seconds = frames / SAMPLE_RATE
-            if not 0 < seconds <= limits.max_seconds:
+            if not 0 < seconds <= (max_seconds or limits.max_seconds):
                 raise InvalidAudio("Duração fora do limite.")
             pcm = source.readframes(frames)
             if len(pcm) != frames * 2:
@@ -218,7 +227,7 @@ class VoicePipeline:
                     self.synthesizer.synthesize(result.text),
                     timeout=max(deadline - monotonic(), 0),
                 )
-                output = read_wav(response, self.limits)
+                output = read_wav(response, self.limits, self.limits.max_output_seconds)
             except TimeoutError:
                 return VoiceResult(result, audio_status="synthesis_timeout")
             except Exception:
