@@ -20,6 +20,8 @@ BLINK = 0.18  # s de uma piscada
 REACTION = 2.5  # s de alegria depois de um toque
 TAP = 0.6  # toque mais curto que isso é "toque curto"
 HOLD_TO_CLOSE = 3.0
+# Instantes (s) em que o rosto confere se está mesmo em tela cheia.
+FULLSCREEN_CHECKS = (0.5, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0, 30.0, 45.0, 60.0)
 DEFAULT_FPS = 30
 CORNER_STEPS = 8
 
@@ -295,6 +297,31 @@ def scene(face: Face, width: float, height: float) -> list[list[float]]:
     return items
 
 
+class FullscreenGuard:
+    """Diz quando conferir se a tela cheia pegou.
+
+    No boot, o rosto pode abrir antes de o gerenciador de janelas estar pronto, e o
+    primeiro pedido de tela cheia se perde. Por isso o rosto confere algumas vezes no
+    primeiro minuto (lista finita: com duas telas, a área total nunca bate com uma
+    janela em tela cheia, e o pedido não pode ficar se repetindo para sempre).
+    """
+
+    def __init__(self, checks: Sequence[float] = FULLSCREEN_CHECKS) -> None:
+        self._pending = sorted(checks)
+
+    def due(self, t: float) -> bool:
+        if not self._pending or t < self._pending[0]:
+            return False
+        while self._pending and t >= self._pending[0]:
+            self._pending.pop(0)
+        return True
+
+
+def needs_fullscreen(width: int, height: int, screen_w: int, screen_h: int) -> bool:
+    """A janela está visivelmente menor que a tela (tolerância de 5%)."""
+    return width < screen_w * 0.95 or height < screen_h * 0.95
+
+
 def run_window(
     animator: Animator,
     fps: int,
@@ -312,6 +339,10 @@ def run_window(
     root.title("NeoSon")
     root.configure(background=BACKGROUND, cursor="none")
     if fullscreen:
+        # Já do tamanho da tela: se o pedido de tela cheia se perder, a janela
+        # ainda abre grande até o FullscreenGuard refazer o pedido.
+        width, height = root.winfo_screenwidth(), root.winfo_screenheight()
+        root.geometry(f"{width}x{height}+0+0")
         root.attributes("-fullscreen", True)
     else:
         root.geometry(f"{DESIGN_W:.0f}x{DESIGN_H:.0f}")
@@ -329,15 +360,27 @@ def run_window(
     start = time.monotonic()
     delay = max(1, round(1000 / fps))
     pressed: list[float] = []
+    guard = FullscreenGuard() if fullscreen else None
 
     def now() -> float:
         return time.monotonic() - start
+
+    def keep_fullscreen() -> None:
+        size = (root.winfo_width(), root.winfo_height())
+        screen = (root.winfo_screenwidth(), root.winfo_screenheight())
+        if needs_fullscreen(*size, *screen):
+            # Desligar e ligar de novo: o Tk só reenvia o pedido se o estado mudar.
+            root.attributes("-fullscreen", False)
+            root.attributes("-fullscreen", True)
+            root.lift()
 
     def tick() -> None:
         t = now()
         if (seconds and t >= seconds) or (pressed and t - pressed[0] >= HOLD_TO_CLOSE):
             root.destroy()
             return
+        if guard is not None and guard.due(t):
+            keep_fullscreen()
         coords = scene(animator.frame(t), canvas.winfo_width(), canvas.winfo_height())
         for item, points in zip(items, coords, strict=True):
             canvas.coords(item, points)

@@ -109,6 +109,14 @@ Confira com `desktop-file-validate` e `systemd-analyze --user verify`, depois
 inicia é a sessão. Para desligar o início automático, apague o arquivo de
 `~/.config/autostart`; para fechar agora, `systemctl --user stop neoson-face`.
 
+No boot, o rosto abre logo depois do labwc e é ele quem faz o Xwayland iniciar; o primeiro
+pedido de tela cheia pode chegar antes de o gerenciador de janelas estar pronto e se perder
+(a janela aparecia pequena, com barra de título). Por isso a janela já nasce do tamanho da
+tela e, no primeiro minuto, o rosto confere algumas vezes (`FULLSCREEN_CHECKS`) se está mesmo
+em tela cheia e refaz o pedido se não estiver. A lista de conferências é finita: com duas
+telas ligadas, a área total nunca bate com uma janela em tela cheia, e o pedido não pode se
+repetir para sempre.
+
 ## Conferir sem olhar a tela
 
 Com o rosto aberto, uma captura da tela mostra o que está sendo exibido:

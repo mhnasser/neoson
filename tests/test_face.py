@@ -15,9 +15,11 @@ from neoson_robot.face import (
     Animator,
     Eye,
     Face,
+    FullscreenGuard,
     blink_factor,
     eye_outline,
     eyelid_box,
+    needs_fullscreen,
     palette,
     parse_color,
     program_face,
@@ -230,3 +232,19 @@ def test_cli_without_display_and_bad_options(
         with pytest.raises(SystemExit) as error:
             face_module.main(bad)
         assert error.value.code == 2
+
+
+def test_fullscreen_guard_checks_a_few_times_then_stops() -> None:
+    guard = FullscreenGuard((0.5, 1.0, 2.0))
+    assert not guard.due(0.2)
+    assert guard.due(0.6)
+    assert not guard.due(0.7)  # cada instante vale uma vez só
+    assert guard.due(5.0)  # atrasado: junta os instantes vencidos numa conferência
+    assert not guard.due(100.0)  # lista esgotada: nunca mais
+
+
+def test_needs_fullscreen_only_when_window_is_clearly_smaller() -> None:
+    assert needs_fullscreen(376, 290, 800, 480)  # janela do boot que falhou
+    assert not needs_fullscreen(800, 480, 800, 480)
+    assert not needs_fullscreen(790, 470, 800, 480)  # tolerância de 5%
+    assert needs_fullscreen(800, 400, 800, 480)
