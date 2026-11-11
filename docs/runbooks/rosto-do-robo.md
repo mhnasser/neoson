@@ -44,7 +44,7 @@ labwc inicia sob demanda.
 |---|---|
 | `--expression neutro\|feliz\|surpreso` | repete só essa expressão (a cada 6 s) |
 | `--fps N` | quadros por segundo (padrão 30, de 5 a 60) |
-| `--color #rrggbb` | cor base dos olhos (padrão `#1f66ff`, o azul do LCD 1602) |
+| `--color #rrggbb` | cor base dos olhos (padrão `#0a50ff`, azul saturado no tom do LCD 1602) |
 | `--seconds S` | fecha depois de S segundos (padrão 0: não fecha) |
 | `--windowed` | janela de 800x480 em vez de tela cheia, para testar num computador |
 
@@ -120,5 +120,5 @@ scp neoson-pi.local:/tmp/rosto.png .
 As expressões ficam em `EXPRESSIONS` (posição, tamanho e arredondamento de cada olho, e
 `smile` de 0 a 1 para o arco) e a ordem e a duração em `PROGRAM`. A espessura das camadas
 de cada olho fica em `LAYERS`; as cores saem de uma cor base por `palette` (brilho externo a
-30% da cor, borda na cor e miolo 25% mais perto do branco). Uma expressão nova precisa de uma
+30% da cor, borda na cor e miolo 10% mais perto do branco). Uma expressão nova precisa de uma
 entrada em `EXPRESSIONS` e, se tiver movimento próprio, de um caso em `behave`.

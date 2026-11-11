@@ -164,8 +164,8 @@ def test_palette_derives_glow_rim_and_core_from_one_color() -> None:
     outer, rim, core = palette("#1f66ff")
     assert rim == "#1f66ff"
     assert outer == "#091f4c"  # 30% da cor: brilho escuro
-    assert core == "#578cff"  # 25% em direção ao branco: miolo mais claro
-    assert DEFAULT_PALETTE == palette("#1f66ff")
+    assert core == "#3575ff"  # 10% em direção ao branco: miolo um pouco mais claro
+    assert DEFAULT_PALETTE == palette("#0a50ff")
     for bad in ("1f66ff", "#1f66f", "#1f66fz"):
         with pytest.raises(ValueError):
             parse_color(bad)

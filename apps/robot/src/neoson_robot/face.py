@@ -26,7 +26,7 @@ CORNER_STEPS = 8
 # Camadas de cada olho, de fora para dentro (quanto crescem além do olho): brilho
 # externo, borda e miolo. As cores saem de uma cor base por `palette`.
 LAYERS = (9.0, 4.0, 0.0)
-DEFAULT_COLOR = "#1f66ff"  # azul da luz de fundo do LCD 1602 do peito
+DEFAULT_COLOR = "#0a50ff"  # azul saturado, no tom da luz de fundo do LCD do peito
 BACKGROUND = "#000000"
 
 
@@ -108,14 +108,14 @@ def parse_color(value: str) -> tuple[int, int, int]:
 
 
 def palette(color: str) -> tuple[str, str, str]:
-    """Cores das camadas a partir da cor base: brilho escuro, borda e miolo claro."""
+    """Cores das camadas a partir da cor base: brilho escuro, borda e miolo."""
     base = parse_color(color)
 
     def tone(target: int, amount: float) -> str:
         channels = (round(lerp(c, target, amount)) for c in base)
         return "#" + "".join(f"{c:02x}" for c in channels)
 
-    return tone(0, 0.7), tone(0, 0.0), tone(255, 0.25)
+    return tone(0, 0.7), tone(0, 0.0), tone(255, 0.10)
 
 
 DEFAULT_PALETTE = palette(DEFAULT_COLOR)
