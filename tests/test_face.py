@@ -6,8 +6,9 @@ from neoson_robot import face as face_module
 from neoson_robot.face import (
     BLINK,
     CORNER_STEPS,
+    DEFAULT_PALETTE,
     EXPRESSIONS,
-    GLOW,
+    LAYERS,
     PROGRAM,
     REACTION,
     TRANSITION,
@@ -17,6 +18,8 @@ from neoson_robot.face import (
     blink_factor,
     eye_outline,
     eyelid_box,
+    palette,
+    parse_color,
     program_face,
     rounded_rect,
     scene,
@@ -50,7 +53,7 @@ def test_rounded_rect_keeps_point_count_and_bounds() -> None:
 def test_glow_layers_grow_around_the_eye() -> None:
     eye = Eye(400, 240, 150, 180, 46)
     core = bounds(eye_outline(eye))
-    outer = bounds(eye_outline(eye, GLOW[0][0]))
+    outer = bounds(eye_outline(eye, LAYERS[0]))
     assert core == pytest.approx((325, 150, 475, 330))
     assert outer == pytest.approx((316, 141, 484, 339))
 
@@ -58,7 +61,7 @@ def test_glow_layers_grow_around_the_eye() -> None:
 def test_eyelid_hides_below_eye_until_it_smiles() -> None:
     eye = Eye(400, 240, 176, 176, 88)
     lid_top = eyelid_box(eye)[1]
-    glow_bottom = bounds(eye_outline(eye, GLOW[0][0]))[3]
+    glow_bottom = bounds(eye_outline(eye, LAYERS[0]))[3]
     assert lid_top >= glow_bottom - 1e-9
 
     happy = eyelid_box(Eye(400, 240, 176, 176, 88, smile=1.0))
@@ -145,7 +148,7 @@ def test_animator_rejects_phases_shorter_than_the_transition() -> None:
 def test_scene_scales_and_centers_on_any_screen() -> None:
     calm = EXPRESSIONS["neutro"]
     items = scene(calm, 800, 480)
-    assert len(items) == 2 * (len(GLOW) + 1)
+    assert len(items) == 2 * (len(LAYERS) + 1)
     assert bounds(items[2]) == pytest.approx(bounds(eye_outline(calm.left)))
 
     double = scene(calm, 1600, 960)
@@ -156,20 +159,45 @@ def test_scene_scales_and_centers_on_any_screen() -> None:
     assert wide[2][1] == pytest.approx(items[2][1])
 
 
+def test_palette_derives_glow_rim_and_core_from_one_color() -> None:
+    assert parse_color(" #1F66FF ") == (31, 102, 255)
+    outer, rim, core = palette("#1f66ff")
+    assert rim == "#1f66ff"
+    assert outer == "#091f4c"  # 30% da cor: brilho escuro
+    assert core == "#578cff"  # 25% em direção ao branco: miolo mais claro
+    assert DEFAULT_PALETTE == palette("#1f66ff")
+    for bad in ("1f66ff", "#1f66f", "#1f66fz"):
+        with pytest.raises(ValueError):
+            parse_color(bad)
+
+
 def test_cli_runs_window_with_chosen_program(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[tuple[tuple[str, float], ...], int, bool, float]] = []
+    calls: list[tuple[object, ...]] = []
 
     def fake_run(
-        animator: Animator, fps: int, fullscreen: bool, seconds: float
+        animator: Animator,
+        fps: int,
+        fullscreen: bool,
+        seconds: float,
+        colors: tuple[str, str, str],
     ) -> None:
-        calls.append((animator.program, fps, fullscreen, seconds))
+        calls.append((animator.program, fps, fullscreen, seconds, colors))
 
     monkeypatch.setattr(face_module, "run_window", fake_run)
     assert face_module.main([]) == 0
-    assert face_module.main(["--expression", "feliz", "--fps", "20", "--windowed"]) == 0
+    options = [
+        "--expression",
+        "feliz",
+        "--fps",
+        "20",
+        "--windowed",
+        "--color",
+        "#FF8800",
+    ]
+    assert face_module.main(options) == 0
     assert calls == [
-        (PROGRAM, 30, True, 0.0),
-        ((("feliz", 6.0),), 20, False, 0.0),
+        (PROGRAM, 30, True, 0.0, DEFAULT_PALETTE),
+        ((("feliz", 6.0),), 20, False, 0.0, palette("#ff8800")),
     ]
 
 
@@ -177,7 +205,11 @@ def test_cli_without_display_and_bad_options(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def no_display(
-        animator: Animator, fps: int, fullscreen: bool, seconds: float
+        animator: Animator,
+        fps: int,
+        fullscreen: bool,
+        seconds: float,
+        colors: tuple[str, str, str],
     ) -> None:
         raise RuntimeError("sem tela gráfica disponível.")
 
@@ -185,7 +217,15 @@ def test_cli_without_display_and_bad_options(
     assert face_module.main(["--seconds", "1"]) == 1
     assert "sem tela gráfica" in capsys.readouterr().err
 
-    for bad in (["--fps", "2"], ["--seconds", "-1"], ["--expression", "bravo"]):
+    bad_options = (
+        ["--fps", "2"],
+        ["--seconds", "-1"],
+        ["--expression", "bravo"],
+        ["--color", "azul"],
+        ["--color", "#12345"],
+        ["--color", "#gg0000"],
+    )
+    for bad in bad_options:
         with pytest.raises(SystemExit) as error:
             face_module.main(bad)
         assert error.value.code == 2

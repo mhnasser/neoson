@@ -23,8 +23,10 @@ HOLD_TO_CLOSE = 3.0
 DEFAULT_FPS = 30
 CORNER_STEPS = 8
 
-# Camadas de cada olho, de fora para dentro: brilho, borda e miolo.
-GLOW = ((9.0, "#0b3a49"), (4.0, "#5fd3f0"), (0.0, "#effdff"))
+# Camadas de cada olho, de fora para dentro (quanto crescem além do olho): brilho
+# externo, borda e miolo. As cores saem de uma cor base por `palette`.
+LAYERS = (9.0, 4.0, 0.0)
+DEFAULT_COLOR = "#1f66ff"  # azul da luz de fundo do LCD 1602 do peito
 BACKGROUND = "#000000"
 
 
@@ -94,6 +96,29 @@ _BLINKS = {"neutro": (1.0, 4.2, 6.9, 7.25), "surpreso": (2.4,)}
 
 def lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * t
+
+
+def parse_color(value: str) -> tuple[int, int, int]:
+    """`#rrggbb` em (r, g, b)."""
+    text = value.strip()
+    if len(text) != 7 or text[0] != "#":
+        raise ValueError("cor no formato #rrggbb")
+    red, green, blue = (int(text[i : i + 2], 16) for i in (1, 3, 5))
+    return red, green, blue
+
+
+def palette(color: str) -> tuple[str, str, str]:
+    """Cores das camadas a partir da cor base: brilho escuro, borda e miolo claro."""
+    base = parse_color(color)
+
+    def tone(target: int, amount: float) -> str:
+        channels = (round(lerp(c, target, amount)) for c in base)
+        return "#" + "".join(f"{c:02x}" for c in channels)
+
+    return tone(0, 0.7), tone(0, 0.0), tone(255, 0.25)
+
+
+DEFAULT_PALETTE = palette(DEFAULT_COLOR)
 
 
 def ease(t: float) -> float:
@@ -240,7 +265,7 @@ def eyelid_box(eye: Eye) -> list[float]:
     Em smile=0 fica logo abaixo do olho; em smile=1 sobe e recorta o olho redondo
     num arco de pontas finas, como "^".
     """
-    outer = GLOW[0][0]
+    outer = LAYERS[0]
     half_w, half_h = eye.w / 2 + outer, eye.h / 2 + outer
     hidden = eye.y + 2 * half_h
     smiling = eye.y + 0.43 * eye.h
@@ -251,7 +276,7 @@ def eyelid_box(eye: Eye) -> list[float]:
 def scene(face: Face, width: float, height: float) -> list[list[float]]:
     """Coordenadas em pixels de cada item, na ordem de desenho.
 
-    Por olho: as camadas de GLOW (polígonos) e a pálpebra (oval). O projeto de
+    Por olho: as camadas de LAYERS (polígonos) e a pálpebra (oval). O projeto de
     800x480 é escalado para caber na tela e centralizado.
     """
     scale = min(width / DESIGN_W, height / DESIGN_H)
@@ -265,12 +290,18 @@ def scene(face: Face, width: float, height: float) -> list[list[float]]:
 
     items: list[list[float]] = []
     for eye in (face.left, face.right):
-        items += [place(eye_outline(eye, grow)) for grow, _ in GLOW]
+        items += [place(eye_outline(eye, grow)) for grow in LAYERS]
         items.append(place(eyelid_box(eye)))
     return items
 
 
-def run_window(animator: Animator, fps: int, fullscreen: bool, seconds: float) -> None:
+def run_window(
+    animator: Animator,
+    fps: int,
+    fullscreen: bool,
+    seconds: float,
+    colors: Sequence[str] = DEFAULT_PALETTE,
+) -> None:
     """Desenha o rosto em Tk até Esc, toque longo ou `seconds` (0 = sem fim)."""
     import tkinter
 
@@ -291,7 +322,7 @@ def run_window(animator: Animator, fps: int, fullscreen: bool, seconds: float) -
     flat = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     items: list[int] = []
     for _ in range(2):
-        for _grow, color in GLOW:
+        for color in colors:
             items.append(canvas.create_polygon(*flat, fill=color, outline=""))
         items.append(canvas.create_oval(0, 0, 0, 0, fill=BACKGROUND, outline=""))
 
@@ -334,6 +365,14 @@ def _fps(value: str) -> int:
     return fps
 
 
+def _color(value: str) -> str:
+    try:
+        parse_color(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("cor no formato #rrggbb") from None
+    return value.strip().lower()
+
+
 def _seconds(value: str) -> float:
     seconds = float(value)
     if seconds < 0:
@@ -353,6 +392,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--fps", type=_fps, default=DEFAULT_FPS)
     parser.add_argument(
+        "--color",
+        type=_color,
+        default=DEFAULT_COLOR,
+        help=f"cor base dos olhos, #rrggbb (padrão {DEFAULT_COLOR})",
+    )
+    parser.add_argument(
         "--seconds", type=_seconds, default=0.0, help="fecha depois de N s (0 = nunca)"
     )
     parser.add_argument(
@@ -361,7 +406,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     program = ((args.expression, 6.0),) if args.expression else PROGRAM
     try:
-        run_window(Animator(program), args.fps, not args.windowed, args.seconds)
+        run_window(
+            Animator(program),
+            args.fps,
+            not args.windowed,
+            args.seconds,
+            palette(args.color),
+        )
     except RuntimeError as error:
         print(f"neoson-face: {error}", file=sys.stderr)
         return 1
