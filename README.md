@@ -85,7 +85,9 @@ uv sync --package neoson-robot --no-dev
 ```
 
 No peito do Robot, o `neoson-chest` mostra uso e temperatura da CPU e uso da RAM num LCD 1602
-por I2C; veja o [runbook do display do peito](docs/runbooks/display-do-peito.md).
+por I2C; veja o [runbook do display do peito](docs/runbooks/display-do-peito.md). Na tela de 7",
+o `neoson-face` mostra o rosto animado do robô em tela cheia; veja o
+[runbook do rosto](docs/runbooks/rosto-do-robo.md).
 
 O `neoson-telegram` conversa pelo Telegram com o mesmo motor e o mesmo banco do gateway. Ele só
 responde em chat privado a usuários listados em `NEOSON_TELEGRAM_ALLOWED_USERS` (IDs numéricos)

@@ -1,0 +1,191 @@
+from dataclasses import astuple
+
+import pytest
+
+from neoson_robot import face as face_module
+from neoson_robot.face import (
+    BLINK,
+    CORNER_STEPS,
+    EXPRESSIONS,
+    GLOW,
+    PROGRAM,
+    REACTION,
+    TRANSITION,
+    Animator,
+    Eye,
+    Face,
+    blink_factor,
+    eye_outline,
+    eyelid_box,
+    program_face,
+    rounded_rect,
+    scene,
+)
+
+CYCLE = sum(duration for _, duration in PROGRAM)
+
+
+def bounds(points: list[float]) -> tuple[float, float, float, float]:
+    xs, ys = points[::2], points[1::2]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def gap(a: Face, b: Face) -> float:
+    """Maior diferença entre parâmetros de dois rostos."""
+    pairs = zip(
+        astuple(a.left) + astuple(a.right),
+        astuple(b.left) + astuple(b.right),
+        strict=True,
+    )
+    return float(max(abs(x - y) for x, y in pairs))
+
+
+def test_rounded_rect_keeps_point_count_and_bounds() -> None:
+    for radius in (0.0, 20.0, 1000.0):  # 1000: vira pílula sem sair da caixa
+        points = rounded_rect(10, 20, 110, 220, radius)
+        assert len(points) == 2 * 4 * (CORNER_STEPS + 1)
+        assert bounds(points) == pytest.approx((10, 20, 110, 220))
+
+
+def test_glow_layers_grow_around_the_eye() -> None:
+    eye = Eye(400, 240, 150, 180, 46)
+    core = bounds(eye_outline(eye))
+    outer = bounds(eye_outline(eye, GLOW[0][0]))
+    assert core == pytest.approx((325, 150, 475, 330))
+    assert outer == pytest.approx((316, 141, 484, 339))
+
+
+def test_eyelid_hides_below_eye_until_it_smiles() -> None:
+    eye = Eye(400, 240, 176, 176, 88)
+    lid_top = eyelid_box(eye)[1]
+    glow_bottom = bounds(eye_outline(eye, GLOW[0][0]))[3]
+    assert lid_top >= glow_bottom - 1e-9
+
+    happy = eyelid_box(Eye(400, 240, 176, 176, 88, smile=1.0))
+    eye_top = 240 - 88
+    assert eye_top < happy[1] < 240  # sobra só o arco de cima do olho
+    assert (
+        happy[0] < 400 - 88 and happy[2] > 400 + 88
+    )  # cobre o olho inteiro na largura
+
+
+def test_program_loops_through_expressions() -> None:
+    assert program_face(3.0)[0] == "neutro"
+    assert program_face(8.0 + 2.5)[0] == "feliz"
+    assert program_face(13.0 + 2.0)[0] == "surpreso"
+    assert program_face(CYCLE + 3.0)[0] == "neutro"
+
+    _, happy = program_face(8.0 + 1.0)
+    assert happy.left.smile == pytest.approx(1.0)
+    _, calm = program_face(0.6)
+    assert calm.left.smile == 0.0
+
+
+def test_no_jumps_between_expressions_or_when_the_loop_restarts() -> None:
+    boundaries = [0.0, 8.0, 13.0, CYCLE, CYCLE + 8.0]
+    epsilon = 1e-4
+    for boundary in boundaries:
+        before = program_face(boundary - epsilon)[1]
+        after = program_face(boundary + epsilon)[1]
+        assert gap(before, after) < 0.5, boundary
+
+
+def test_transition_eases_into_the_next_expression() -> None:
+    start = program_face(8.0)[1]
+    middle = program_face(8.0 + TRANSITION / 2)[1]
+    end = program_face(8.0 + TRANSITION)[1]
+    assert start.left.smile == pytest.approx(0.0, abs=1e-6)
+    assert 0.3 < middle.left.smile < 0.7
+    assert end.left.smile == pytest.approx(1.0)
+
+
+def test_blinks_close_the_eyes_briefly() -> None:
+    assert blink_factor(1.0 + BLINK / 2, (1.0,)) == pytest.approx(0.08)
+    assert blink_factor(0.5, (1.0,)) == 1.0
+    open_eye = program_face(0.6)[1].left
+    blinking = program_face(1.0 + BLINK / 2)[1].left
+    assert blinking.h == pytest.approx(open_eye.h * 0.08, rel=0.01)
+
+
+def test_neutral_face_glances_to_both_sides() -> None:
+    base = EXPRESSIONS["neutro"]
+    left = program_face(2.8)[1]
+    right = program_face(5.5)[1]
+    assert left.left.x == pytest.approx(base.left.x - 60)
+    assert right.right.x == pytest.approx(base.right.x + 60)
+    assert left.left.h > left.right.h  # o olho do lado do olhar cresce
+
+
+def test_happy_face_hops_and_surprised_face_pops() -> None:
+    base = EXPRESSIONS["feliz"].left
+    heights = [program_face(8.0 + 1.0 + i * 0.05)[1].left.y for i in range(20)]
+    assert min(heights) < base.y - 5
+    assert max(heights) <= base.y + 1e-9
+
+    surprised = EXPRESSIONS["surpreso"].left
+    popped = program_face(13.0 + TRANSITION + 0.25)[1].left
+    assert popped.w > surprised.w * 1.05
+
+
+def test_tap_reaction_makes_any_expression_happy_for_a_while() -> None:
+    animator = Animator()
+    animator.react(2.0)
+    assert animator.frame(2.0 + 1.0).left.smile == pytest.approx(1.0)
+    assert animator.frame(2.0 + REACTION + 0.1).left.smile == 0.0
+    assert animator.frame(2.0 + 1.0).left.smile == 0.0  # reação já terminou
+
+
+def test_animator_rejects_phases_shorter_than_the_transition() -> None:
+    with pytest.raises(ValueError):
+        Animator((("neutro", TRANSITION),))
+    with pytest.raises(ValueError):
+        Animator(())
+
+
+def test_scene_scales_and_centers_on_any_screen() -> None:
+    calm = EXPRESSIONS["neutro"]
+    items = scene(calm, 800, 480)
+    assert len(items) == 2 * (len(GLOW) + 1)
+    assert bounds(items[2]) == pytest.approx(bounds(eye_outline(calm.left)))
+
+    double = scene(calm, 1600, 960)
+    assert double[2] == pytest.approx([2 * value for value in items[2]])
+
+    wide = scene(calm, 1024, 480)  # sobra largura: centraliza
+    assert wide[2][0] == pytest.approx(items[2][0] + 112)
+    assert wide[2][1] == pytest.approx(items[2][1])
+
+
+def test_cli_runs_window_with_chosen_program(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[tuple[tuple[str, float], ...], int, bool, float]] = []
+
+    def fake_run(
+        animator: Animator, fps: int, fullscreen: bool, seconds: float
+    ) -> None:
+        calls.append((animator.program, fps, fullscreen, seconds))
+
+    monkeypatch.setattr(face_module, "run_window", fake_run)
+    assert face_module.main([]) == 0
+    assert face_module.main(["--expression", "feliz", "--fps", "20", "--windowed"]) == 0
+    assert calls == [
+        (PROGRAM, 30, True, 0.0),
+        ((("feliz", 6.0),), 20, False, 0.0),
+    ]
+
+
+def test_cli_without_display_and_bad_options(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def no_display(
+        animator: Animator, fps: int, fullscreen: bool, seconds: float
+    ) -> None:
+        raise RuntimeError("sem tela gráfica disponível.")
+
+    monkeypatch.setattr(face_module, "run_window", no_display)
+    assert face_module.main(["--seconds", "1"]) == 1
+    assert "sem tela gráfica" in capsys.readouterr().err
+
+    for bad in (["--fps", "2"], ["--seconds", "-1"], ["--expression", "bravo"]):
+        with pytest.raises(SystemExit) as error:
+            face_module.main(bad)
+        assert error.value.code == 2
