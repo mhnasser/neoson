@@ -46,7 +46,7 @@ alteração feita no sistema foi o volume da saída de som, indicado abaixo.
 | HDMI | `vc4-hdmi-0` e `vc4-hdmi-1` | Não usados para áudio |
 | Tela touch 7" | `11-0038 generic ft5x06 (00)`, touchscreen no udev e no libinput | Usuário no grupo `input`; funcionamento confirmado pelo usuário no teclado virtual. O touch fica no barramento `i2c-11`, que é interno à interface DSI, e não nos pinos GPIO |
 | Servidor de áudio | PipeWire 1.4.2 e WirePlumber | Acessíveis pela sessão SSH do usuário |
-| LCD 1602 com interface I2C | **ainda não conectado nem detectado** | O I2C dos pinos GPIO está **desligado**: não existe `/dev/i2c-1`, e `config.txt` não tem `dtparam=i2c_arm=on`. Os barramentos presentes (`i2c-11`, `-13`, `-14`) são internos. Endereço provável 0x27 ou 0x3F (backpack PCF8574). Ver o alerta de tensão abaixo |
+| LCD 1602 com interface I2C (display do peito) | **conectado** (conferido em 11/11/2026): backpack PCF8574 responde em `0x27` no `/dev/i2c-1` | O I2C dos pinos GPIO está ligado (`dtparam=i2c_arm=on` no `config.txt`). Mostra CPU e RAM pelo `neoson-chest`: ver [Display do peito](runbooks/display-do-peito.md). Como o alerta de tensão abaixo foi resolvido não está registrado |
 | Câmera 5 MP | **não detectada**: `rpicam-hello --list-cameras` → `No cameras available!` | `camera_auto_detect=1` está ligado. O Pi 5 usa conector de câmera de 22 pinos; câmeras de 5 MP (OV5647) vêm com cabo de 15 pinos e precisam de um cabo adaptador 15→22. Conferir cabo e encaixe |
 
 Números de placa ALSA e de nó do PipeWire podem mudar ao reiniciar ou reconectar
@@ -75,8 +75,8 @@ colocar mais de 3,3 V no GPIO 2/3. Antes de conectar, escolher uma destas saída
 - remover os pull-ups do backpack, deixando só os da Pi (1,8 kΩ para 3,3 V);
 - usar um conversor de nível lógico bidirecional.
 
-Habilitar o I2C (`sudo raspi-config` → Interface Options → I2C) e instalar o `i2c-tools` ficam para
-a fase do display (F6 — Robot + integrações, na especificação técnica).
+O I2C dos GPIO foi habilitado e o LCD conectado antes de 11/11/2026; o `i2c-tools` continua
+ausente (o [runbook do display](runbooks/display-do-peito.md) detecta o endereço com Python).
 
 ## Acesso remoto e journal (desde 09/10/2026)
 

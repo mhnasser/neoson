@@ -84,6 +84,9 @@ cliente HTTP, sem nada do servidor; para instalar apenas ele:
 uv sync --package neoson-robot --no-dev
 ```
 
+No peito do Robot, o `neoson-chest` mostra uso e temperatura da CPU e uso da RAM num LCD 1602
+por I2C; veja o [runbook do display do peito](docs/runbooks/display-do-peito.md).
+
 O `neoson-telegram` conversa pelo Telegram com o mesmo motor e o mesmo banco do gateway. Ele só
 responde em chat privado a usuários listados em `NEOSON_TELEGRAM_ALLOWED_USERS` (IDs numéricos)
 e precisa de `NEOSON_TELEGRAM_BOT_TOKEN` (criado no @BotFather). Cada chat tem a sua sessão;

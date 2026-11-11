@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 neoson-robot = "neoson_robot.main:main"
+neoson-chest = "neoson_robot.chest_display:main"
 
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13"]
