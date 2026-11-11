@@ -72,20 +72,18 @@ def test_eyelid_hides_below_eye_until_it_smiles() -> None:
     )  # cobre o olho inteiro na largura
 
 
-def test_program_loops_through_expressions() -> None:
+def test_loop_alternates_neutral_and_surprised_without_happy() -> None:
+    assert [name for name, _ in PROGRAM] == ["neutro", "surpreso"]
     assert program_face(3.0)[0] == "neutro"
-    assert program_face(8.0 + 2.5)[0] == "feliz"
-    assert program_face(13.0 + 2.0)[0] == "surpreso"
+    assert program_face(8.0 + 2.0)[0] == "surpreso"
     assert program_face(CYCLE + 3.0)[0] == "neutro"
-
-    _, happy = program_face(8.0 + 1.0)
-    assert happy.left.smile == pytest.approx(1.0)
-    _, calm = program_face(0.6)
-    assert calm.left.smile == 0.0
+    # Sem toque, o rosto nunca sorri: a expressão feliz é só da reação.
+    steps = round(CYCLE / 0.05)
+    assert max(program_face(i * 0.05)[1].left.smile for i in range(steps)) == 0.0
 
 
 def test_no_jumps_between_expressions_or_when_the_loop_restarts() -> None:
-    boundaries = [0.0, 8.0, 13.0, CYCLE, CYCLE + 8.0]
+    boundaries = [0.0, 8.0, CYCLE, CYCLE + 8.0]
     epsilon = 1e-4
     for boundary in boundaries:
         before = program_face(boundary - epsilon)[1]
@@ -94,12 +92,13 @@ def test_no_jumps_between_expressions_or_when_the_loop_restarts() -> None:
 
 
 def test_transition_eases_into_the_next_expression() -> None:
-    start = program_face(8.0)[1]
-    middle = program_face(8.0 + TRANSITION / 2)[1]
-    end = program_face(8.0 + TRANSITION)[1]
-    assert start.left.smile == pytest.approx(0.0, abs=1e-6)
-    assert 0.3 < middle.left.smile < 0.7
-    assert end.left.smile == pytest.approx(1.0)
+    calm, surprised = EXPRESSIONS["neutro"].left, EXPRESSIONS["surpreso"].left
+    start = program_face(8.0)[1].left
+    middle = program_face(8.0 + TRANSITION / 2)[1].left
+    end = program_face(8.0 + TRANSITION)[1].left
+    assert start.w == pytest.approx(calm.w)
+    assert calm.w + 10 < middle.w < surprised.w - 10
+    assert end.w == pytest.approx(surprised.w)
 
 
 def test_blinks_close_the_eyes_briefly() -> None:
@@ -119,14 +118,16 @@ def test_neutral_face_glances_to_both_sides() -> None:
     assert left.left.h > left.right.h  # o olho do lado do olhar cresce
 
 
-def test_happy_face_hops_and_surprised_face_pops() -> None:
+def test_happy_face_hops_on_touch_and_surprised_face_pops() -> None:
     base = EXPRESSIONS["feliz"].left
-    heights = [program_face(8.0 + 1.0 + i * 0.05)[1].left.y for i in range(20)]
+    animator = Animator()
+    animator.react(1.0)
+    heights = [animator.frame(1.6 + i * 0.05).left.y for i in range(20)]
     assert min(heights) < base.y - 5
     assert max(heights) <= base.y + 1e-9
 
     surprised = EXPRESSIONS["surpreso"].left
-    popped = program_face(13.0 + TRANSITION + 0.25)[1].left
+    popped = program_face(8.0 + TRANSITION + 0.25)[1].left
     assert popped.w > surprised.w * 1.05
 
 

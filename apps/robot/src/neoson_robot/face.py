@@ -1,8 +1,8 @@
 """Rosto do robô na tela de 7": dois olhos animados, em tela cheia, sobre fundo preto.
 
-As expressões se repetem em loop (neutro, feliz, surpreso) com transições suaves,
-piscadas e olhares. Um toque curto deixa o rosto feliz por alguns segundos; um toque
-longo (3 s) ou Esc fecha. A lógica (formas, linha do tempo e cena em pixels) não
+As expressões neutro e surpreso se repetem em loop, com transições suaves, piscadas
+e olhares. A expressão feliz aparece só com um toque curto, por alguns segundos; um
+toque longo (3 s) ou Esc fecha. A lógica (formas, linha do tempo e cena em pixels) não
 depende de tela e é testada sem Tk; só `run_window` desenha. Usa só a biblioteca
 padrão, então também roda copiado sozinho para a Pi (`python3 face.py`).
 """
@@ -73,9 +73,9 @@ EXPRESSIONS: dict[str, Face] = {
     "feliz": _pair(155, 252, 176, 176, 88, smile=1.0),
     "surpreso": _pair(160, 232, 196, 196, 98),
 }
+# Loop sem toque. A expressão feliz fica reservada para a reação ao toque (`Animator`).
 PROGRAM: tuple[tuple[str, float], ...] = (
     ("neutro", 8.0),
-    ("feliz", 5.0),
     ("surpreso", 4.5),
 )
 
@@ -388,7 +388,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--expression",
         choices=sorted(EXPRESSIONS),
-        help="repete só essa expressão (padrão: neutro, feliz e surpreso em loop)",
+        help="repete só essa expressão (padrão: neutro e surpreso em loop)",
     )
     parser.add_argument("--fps", type=_fps, default=DEFAULT_FPS)
     parser.add_argument(

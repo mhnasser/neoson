@@ -1,19 +1,22 @@
 # Rosto do robô na tela de 7"
 
 O `neoson-face` ocupa a tela touch de 7" com o rosto do robô: dois olhos azuis, no tom da luz
-de fundo do LCD do peito, sobre fundo preto, sem barra de tarefas nem cursor. As expressões
+de fundo do LCD do peito, sobre fundo preto, sem barra de tarefas nem cursor. Duas expressões
 se repetem em loop, com transições suaves de meio segundo:
 
 | Expressão | Duração | Movimento |
 |---|---|---|
 | Neutro | 8 s | olhos ovais; olha para a esquerda e para a direita e pisca |
-| Feliz | 5 s | olhos em arco ("^ ^"), dando pequenos pulos |
 | Surpreso | 4,5 s | olhos redondos e maiores, que dão um salto rápido e piscam |
+
+A expressão **feliz** (olhos em arco, "^ ^", dando pequenos pulos) não entra no loop: aparece
+só como reação ao toque.
 
 Toque na tela:
 
 - **toque curto**: o rosto fica feliz por 2,5 s e volta ao loop;
-- **toque longo (3 s)** ou **Esc**: fecha o rosto e devolve a área de trabalho.
+- **toque longo (3 s)** ou **Esc**: fecha o rosto e devolve a área de trabalho (para, por
+  exemplo, reiniciar a Pi pelo menu). O atalho "Rosto do NeoSon" no menu reabre o rosto.
 
 O programa é o módulo `neoson_robot.face`, só com a biblioteca padrão (Tk para desenhar). A
 lógica (formas, linha do tempo e cena em pixels) é testada sem tela; o desenho é escalado e
