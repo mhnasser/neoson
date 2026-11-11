@@ -29,6 +29,9 @@ DEFAULT_BUS = 1
 DEFAULT_ADDRESS = 0x27
 DEFAULT_INTERVAL = 2.0
 MIN_INTERVAL = 0.5
+MAX_WAIT = 300.0
+PROBE_INTERVAL = 1.0
+EXIT_NO_DISPLAY = 3  # barramento inexistente ou nada respondendo no endereço
 ROOT = Path("/")
 THERMAL_ZONE = "sys/class/thermal/thermal_zone0/temp"
 KIB_PER_GIB = 1024 * 1024
@@ -48,6 +51,12 @@ class ByteBus(Protocol):
 
     def write_byte(self, value: int) -> None: ...
     def close(self) -> None: ...
+
+
+class I2CDevice(ByteBus, Protocol):
+    """Barramento que também lê, para confirmar que há um dispositivo no endereço."""
+
+    def read_byte(self) -> int: ...
 
 
 class LinuxI2C:
@@ -70,8 +79,43 @@ class LinuxI2C:
     def write_byte(self, value: int) -> None:
         os.write(self._fd, bytes((value,)))
 
+    def read_byte(self) -> int:
+        # Sem ACK no endereço, o kernel devolve erro (ENXIO/EREMOTEIO).
+        data = os.read(self._fd, 1)
+        if not data:
+            raise OSError("leitura I2C vazia.")
+        return data[0]
+
     def close(self) -> None:
         os.close(self._fd)
+
+
+def connect(
+    open_bus: Callable[[], I2CDevice],
+    timeout: float,
+    stop: threading.Event,
+    clock: Callable[[], float] = time.monotonic,
+) -> I2CDevice | None:
+    """Abre o barramento e confirma que o endereço responde, por até `timeout` s.
+
+    Barramento inexistente ou endereço sem resposta contam como display ausente
+    (None, também quando `stop` interrompe a espera). Outros erros, como falta
+    de permissão no `/dev/i2c-N`, sobem como OSError.
+    """
+    deadline = clock() + timeout
+    while True:
+        try:
+            device = open_bus()
+        except FileNotFoundError:
+            pass
+        else:
+            try:
+                device.read_byte()
+                return device
+            except OSError:
+                device.close()
+        if clock() >= deadline or stop.wait(PROBE_INTERVAL):
+            return None
 
 
 def encode(text: str) -> bytes:
@@ -298,6 +342,13 @@ def _interval(value: str) -> float:
     return seconds
 
 
+def _wait(value: str) -> float:
+    seconds = float(value)
+    if not 0 <= seconds <= MAX_WAIT:
+        raise argparse.ArgumentTypeError(f"espera entre 0 e {MAX_WAIT:.0f} s")
+    return seconds
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="neoson-chest",
@@ -317,6 +368,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--once", action="store_true", help="mede uma vez, mostra e sai"
+    )
+    parser.add_argument(
+        "--wait",
+        type=_wait,
+        default=0.0,
+        help="segundos esperando o display responder antes de desistir (saída 3)",
     )
     args = parser.parse_args(argv)
 
@@ -341,11 +398,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(flush=True)
         return 0
 
+    where = f"I2C {args.bus} no endereço {args.address:#04x}"
     try:
-        bus = LinuxI2C(args.bus, args.address)
+        bus = connect(lambda: LinuxI2C(args.bus, args.address), args.wait, stop)
     except OSError:
-        _log(f"sem acesso ao I2C {args.bus} no endereço {args.address:#04x}.")
+        _log(f"sem acesso ao {where}.")
         return 1
+    if bus is None:
+        if stop.is_set():
+            return 0
+        _log(f"display não encontrado no {where}.")
+        return EXIT_NO_DISPLAY
     lcd = Lcd1602(bus)
     try:
         if args.once:

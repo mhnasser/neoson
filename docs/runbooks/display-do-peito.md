@@ -71,34 +71,42 @@ ssh neoson-pi.local 'python3 -I ~/neoson-chest/chest_display.py --console --once
 | `--interval S` | segundos entre leituras (padrão 2, mínimo 0,5) |
 | `--console` | mostra as linhas no terminal, sem abrir o I2C |
 | `--once` | mede uma vez, mostra e sai |
+| `--wait S` | segundos esperando o display responder antes de desistir (padrão 0: uma tentativa; máximo 300) |
+
+Antes de usar o LCD, o programa confere se ele está lá: abre o barramento e lê um byte do
+PCF8574 no endereço. Barramento inexistente ou endereço sem resposta contam como **display
+ausente**; com `--wait`, tenta de novo a cada segundo até o prazo.
 
 Ao iniciar, a tela mostra `NeoSon` / `monitor...` até a primeira medição. Ao receber
-`SIGTERM` ou Ctrl+C, limpa a tela e apaga a luz de fundo. Saída 1 quando não há `/proc` ou
-quando o I2C não abre; 2 para opção inválida.
+`SIGTERM` ou Ctrl+C, limpa a tela e apaga a luz de fundo.
+
+| Saída | Significado |
+|---|---|
+| 0 | encerrado normalmente |
+| 1 | sem `/proc`, sem permissão no `/dev/i2c-N` ou falha ao escrever no LCD |
+| 2 | opção inválida |
+| 3 | display não encontrado |
 
 Se uma escrita no I2C falhar com o programa já rodando (fio solto, por exemplo), ele registra
 uma mensagem fixa e reinicia o LCD na volta seguinte, sem encerrar.
 
-## Manter rodando
+## Iniciar junto com a Pi
 
-Teste rápido, até o próximo reinício da Pi, como serviço do usuário:
-
-```bash
-systemd-run --user --unit=neoson-chest --description="NeoSon: display do peito" \
-  --property=Restart=on-failure --property=RestartSec=5 \
-  /usr/bin/python3 -I "$HOME/neoson-chest/chest_display.py"
-systemctl --user status neoson-chest
-systemctl --user stop neoson-chest    # limpa a tela e apaga a luz
-```
-
-Para iniciar junto com a Pi, crie `~/.config/systemd/user/neoson-chest.service`:
+O serviço do usuário abaixo sobe no boot e só mostra as medições se o display for
+encontrado. Crie `~/.config/systemd/user/neoson-chest.service`:
 
 ```ini
 [Unit]
-Description=NeoSon: display do peito
+Description=NeoSon: display do peito (CPU e RAM no LCD 1602)
+# No máximo 5 partidas em 2 min; depois desiste, em vez de ficar em laço.
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
-ExecStart=/usr/bin/python3 -I %h/neoson-chest/chest_display.py
+# Espera até 20 s o LCD responder no I2C. Sem display, sai com 3: fica
+# inativo, sem erro e sem reinício. Falhas de verdade reiniciam após 5 s.
+ExecStart=/usr/bin/python3 -I %h/neoson-chest/chest_display.py --wait 20
+SuccessExitStatus=3
 Restart=on-failure
 RestartSec=5
 
@@ -106,13 +114,45 @@ RestartSec=5
 WantedBy=default.target
 ```
 
-e ative com `systemctl --user daemon-reload && systemctl --user enable --now neoson-chest`.
-Serviços do usuário sobem com a sessão gráfica de login automático; sem ela, é preciso
-`sudo loginctl enable-linger <usuário>`. Para desfazer: `systemctl --user disable --now
-neoson-chest` e apagar o arquivo.
+Ative e confira:
 
-Logs: `journalctl --user -u neoson-chest`. Na Pi 5, o programa ocupou cerca de 15 MB de
-memória e 0,2% de um núcleo, com a atualização a cada 2 segundos.
+```bash
+systemd-analyze --user verify ~/.config/systemd/user/neoson-chest.service
+systemctl --user daemon-reload
+systemctl --user enable --now neoson-chest
+systemctl --user status neoson-chest
+journalctl --user -u neoson-chest -b    # logs desde o último boot
+```
+
+Comportamento no boot:
+
+- **Display presente**: o serviço fica `active (running)` e atualiza a tela até a Pi desligar.
+  No desligamento, o systemd envia `SIGTERM` e a tela é limpa.
+- **Display ausente** (desconectado, I2C desligado ou outro endereço): depois de 20 s, o
+  journal registra `display não encontrado` e o serviço fica `inactive`, sem erro. Se o LCD
+  for ligado depois, inicie com `systemctl --user start neoson-chest`.
+- **Outra falha** (por exemplo, permissão): reinicia a cada 5 s, até 5 vezes em 2 minutos,
+  e então fica `failed`.
+
+Serviços do usuário sobem quando o gerenciador do usuário inicia, o que na Pi acontece com
+o login automático da sessão gráfica, logo após o boot. Sem login automático, habilite com
+`sudo loginctl enable-linger <usuário>`. Para desfazer: `systemctl --user disable --now
+neoson-chest` e apagar o arquivo. Para atualizar o programa, copie o módulo de novo e rode
+`systemctl --user restart neoson-chest`.
+
+Para um teste rápido, sem instalar o serviço (some no próximo reinício):
+
+```bash
+systemd-run --user --unit=neoson-chest-teste -p Restart=on-failure \
+  /usr/bin/python3 -I "$HOME/neoson-chest/chest_display.py"
+systemctl --user stop neoson-chest-teste    # limpa a tela e apaga a luz
+```
+
+Pare o serviço permanente antes desse teste: dois processos escrevendo no mesmo LCD
+embaralham a tela.
+
+Na Pi 5, o programa ocupou cerca de 15 MB de memória e 0,2% de um núcleo, com a
+atualização a cada 2 segundos.
 
 ## Problemas comuns
 
@@ -121,4 +161,5 @@ memória e 0,2% de um núcleo, com a atualização a cada 2 segundos.
 | Luz acesa, sem caracteres | contraste: girar o trimpot azul do backpack |
 | Primeira linha com blocos cheios | LCD alimentado mas não inicializado: conferir endereço e fios SDA/SCL |
 | Caracteres fracos mesmo com o trimpot no máximo | backpack alimentado em 3,3 V |
-| `sem acesso ao I2C 1 no endereço 0x27` | I2C desligado, usuário fora do grupo `i2c` ou endereço errado |
+| `display não encontrado no I2C 1 no endereço 0x27` | LCD desconectado, I2C desligado no `config.txt` ou endereço errado (tentar `--address 0x3f`) |
+| `sem acesso ao I2C 1 no endereço 0x27` | usuário fora do grupo `i2c` |

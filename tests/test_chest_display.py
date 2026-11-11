@@ -13,6 +13,7 @@ from neoson_robot.chest_display import (
     Memory,
     Snapshot,
     SystemReader,
+    connect,
     cpu_percent,
     encode,
     format_lines,
@@ -57,6 +58,38 @@ class Stop(threading.Event):
     def wait(self, timeout: float | None = None) -> bool:
         self.waits += 1
         return self.waits >= self.rounds
+
+
+class FakeDevice(FakeBus):
+    def __init__(self, answers: bool = True) -> None:
+        super().__init__()
+        self.answers = answers
+
+    def read_byte(self) -> int:
+        if not self.answers:
+            raise OSError("sem ACK")
+        return 0xFF
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class TickingStop(threading.Event):
+    """Cada espera avança o relógio; `stop_after` simula um SIGTERM na espera."""
+
+    def __init__(self, clock: Clock, stop_after: int | None = None) -> None:
+        super().__init__()
+        self.clock, self.stop_after, self.waits = clock, stop_after, 0
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.waits += 1
+        self.clock.now += timeout or 0.0
+        return self.stop_after is not None and self.waits >= self.stop_after
 
 
 def decode(writes: list[int], init_pulses: int = 4) -> list[tuple[str, int]]:
@@ -229,7 +262,93 @@ def test_console_once_prints_screen(
     assert capsys.readouterr().out == "CPU   0%    --°C\nRAM   5% 0.4G/8G\n"
 
 
-def test_cli_reports_missing_i2c_and_rejects_bad_options(
+def test_connect_finds_display_without_waiting() -> None:
+    clock, device = Clock(), FakeDevice()
+    stop = TickingStop(clock)
+    assert connect(lambda: device, 10, stop, clock) is device
+    assert stop.waits == 0
+    assert not device.closed
+
+
+def test_connect_waits_for_bus_and_device_to_appear() -> None:
+    clock = Clock()
+    events = iter(["sem barramento", "sem resposta", "ok"])
+    opened: list[FakeDevice] = []
+
+    def open_bus() -> FakeDevice:
+        event = next(events)
+        if event == "sem barramento":
+            raise FileNotFoundError("/dev/i2c-1")
+        opened.append(FakeDevice(answers=event == "ok"))
+        return opened[-1]
+
+    stop = TickingStop(clock)
+    assert connect(open_bus, 10, stop, clock) is opened[-1]
+    assert stop.waits == 2
+    assert opened[0].closed
+    assert not opened[1].closed
+
+
+def test_connect_gives_up_after_timeout_and_closes_each_attempt() -> None:
+    clock = Clock()
+    opened: list[FakeDevice] = []
+
+    def silent() -> FakeDevice:
+        opened.append(FakeDevice(answers=False))
+        return opened[-1]
+
+    assert connect(silent, 3, TickingStop(clock), clock) is None
+    assert len(opened) == 4  # t = 0, 1, 2 e 3 s
+    assert connect(silent, 0, TickingStop(clock), clock) is None
+    assert len(opened) == 5  # sem espera: uma tentativa só
+    assert all(device.closed for device in opened)
+
+
+def test_connect_stops_on_signal_and_raises_configuration_errors() -> None:
+    clock = Clock()
+
+    def absent() -> FakeDevice:
+        raise FileNotFoundError("/dev/i2c-1")
+
+    stop = TickingStop(clock, stop_after=2)
+    assert connect(absent, 60, stop, clock) is None
+    assert stop.waits == 2
+
+    def forbidden() -> FakeDevice:
+        raise PermissionError("/dev/i2c-1")
+
+    with pytest.raises(PermissionError):
+        connect(forbidden, 60, TickingStop(clock), clock)
+
+
+def test_cli_exit_codes_for_absent_and_found_display(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "proc").mkdir()
+    (tmp_path / "proc/stat").write_text(STAT)
+    (tmp_path / "proc/meminfo").write_text(MEMINFO)
+    monkeypatch.setattr(signal, "signal", lambda *args: None)
+    monkeypatch.setattr(chest_display, "SystemReader", lambda: SystemReader(tmp_path))
+    devices: list[FakeDevice] = []
+    present = False
+
+    def fake_i2c(bus: int, address: int) -> FakeDevice:
+        devices.append(FakeDevice(answers=present))
+        return devices[-1]
+
+    monkeypatch.setattr(chest_display, "LinuxI2C", fake_i2c)
+    assert chest_display.main(["--wait", "0"]) == chest_display.EXIT_NO_DISPLAY
+    assert "display não encontrado no I2C 1 no endereço 0x27" in capsys.readouterr().err
+    assert devices[-1].closed
+
+    present = True
+    assert chest_display.main(["--once", "--interval", "0.5"]) == 0
+    text = bytes(code for kind, code in decode(devices[-1].writes) if kind == "chr")
+    assert text == b"CPU   0%    --\xdfCRAM   5% 0.4G/8G"
+    assert devices[-1].closed
+
+
+def test_cli_reports_i2c_without_access_and_rejects_bad_options(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     (tmp_path / "proc").mkdir()
@@ -238,14 +357,20 @@ def test_cli_reports_missing_i2c_and_rejects_bad_options(
     monkeypatch.setattr(signal, "signal", lambda *args: None)
     monkeypatch.setattr(chest_display, "SystemReader", lambda: SystemReader(tmp_path))
 
-    def no_bus(bus: int, address: int) -> FakeBus:
-        raise OSError("sem /dev/i2c")
+    def no_access(bus: int, address: int) -> FakeDevice:
+        raise PermissionError("/dev/i2c-3")
 
-    monkeypatch.setattr(chest_display, "LinuxI2C", no_bus)
-    assert chest_display.main(["--bus", "3", "--address", "0x3f"]) == 1
-    assert "I2C 3 no endereço 0x3f" in capsys.readouterr().err
+    monkeypatch.setattr(chest_display, "LinuxI2C", no_access)
+    assert chest_display.main(["--bus", "3", "--address", "0x3f", "--wait", "5"]) == 1
+    assert "sem acesso ao I2C 3 no endereço 0x3f" in capsys.readouterr().err
 
-    for bad in (["--address", "0x80"], ["--interval", "0.1"]):
+    bad_options = (
+        ["--address", "0x80"],
+        ["--interval", "0.1"],
+        ["--wait", "-1"],
+        ["--wait", "301"],
+    )
+    for bad in bad_options:
         with pytest.raises(SystemExit) as error:
             chest_display.main(bad)
         assert error.value.code == 2
