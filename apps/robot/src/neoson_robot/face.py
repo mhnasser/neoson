@@ -1,18 +1,28 @@
 """Rosto do robô na tela de 7": dois olhos animados, em tela cheia, sobre fundo preto.
 
 As expressões neutro e surpreso se repetem em loop, com transições suaves, piscadas
-e olhares. A expressão feliz aparece só com um toque curto, por alguns segundos; um
-toque longo (3 s) ou Esc fecha. A lógica (formas, linha do tempo e cena em pixels) não
-depende de tela e é testada sem Tk; só `run_window` desenha. Usa só a biblioteca
-padrão, então também roda copiado sozinho para a Pi (`python3 face.py`).
+e olhares. A expressão feliz aparece só com um toque curto, por alguns segundos;
+três toques rápidos mostram a câmera em tela cheia e dois toques rápidos voltam ao
+rosto; um toque longo (3 s) ou Esc fecha. A lógica (formas, linha do tempo, cena em
+pixels e gestos) não depende de tela e é testada sem Tk; só `run_window` desenha.
+Usa só a biblioteca padrão, então também roda copiado sozinho para a Pi
+(`python3 face.py`).
 """
 
 import argparse
 import math
+import os
+import queue
+import signal
+import struct
+import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Protocol
 
 DESIGN_W, DESIGN_H = 800.0, 480.0  # coordenadas de projeto, escaladas para a tela
 TRANSITION = 0.5  # s para trocar de expressão
@@ -20,6 +30,14 @@ BLINK = 0.18  # s de uma piscada
 REACTION = 2.5  # s de alegria depois de um toque
 TAP = 0.6  # toque mais curto que isso é "toque curto"
 HOLD_TO_CLOSE = 3.0
+MULTI_TAP = 0.5  # s máximos entre dois toques da mesma sequência
+CAMERA_TAPS = 3  # toques rápidos no rosto que abrem a câmera
+FACE_TAPS = 2  # toques rápidos na câmera que voltam ao rosto
+CAMERA_MAX = 300.0  # s: por segurança, a câmera volta sozinha ao rosto
+CAMERA_COMMAND = ("rpicam-hello", "-t", "0", "--fullscreen", "--info-text", "")
+ROOT = Path("/")
+_EV_KEY, _BTN_TOUCH = 0x01, 0x14A  # linux/input-event-codes.h
+_INPUT_EVENT = struct.Struct("llHHi")  # struct input_event (timeval, type, code, value)
 # Instantes (s) em que o rosto confere se está mesmo em tela cheia.
 FULLSCREEN_CHECKS = (0.5, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0, 30.0, 45.0, 60.0)
 DEFAULT_FPS = 30
@@ -317,6 +335,168 @@ class FullscreenGuard:
         return True
 
 
+class Gestures:
+    """Transforma pressões e solturas da tela em ações.
+
+    No rosto: 1 toque curto = "feliz"; CAMERA_TAPS toques rápidos = "camera"; toque
+    longo (HOLD_TO_CLOSE) = fechar, conferido por `held`. Na câmera: FACE_TAPS toques
+    rápidos = "rosto". Toques são rápidos quando a soltura de um fica a até MULTI_TAP
+    da soltura do anterior. Sem câmera disponível, os toques só deixam o rosto feliz.
+    """
+
+    def __init__(self, camera_enabled: bool = True) -> None:
+        self.camera_enabled = camera_enabled
+        self.camera = False
+        self._pressed_at: float | None = None
+        self._taps: list[float] = []
+
+    def press(self, t: float) -> None:
+        self._pressed_at = t
+
+    def release(self, t: float) -> str | None:
+        start, self._pressed_at = self._pressed_at, None
+        if start is None or t - start >= TAP:
+            return None
+        if self._taps and t - self._taps[-1] > MULTI_TAP:
+            self._taps = []
+        self._taps.append(t)
+        count = len(self._taps)
+        if self.camera:
+            if count >= FACE_TAPS:
+                self.camera_closed()
+                return "rosto"
+            return None
+        if self.camera_enabled and count >= CAMERA_TAPS:
+            self._taps = []
+            self.camera = True
+            return "camera"
+        return "feliz" if count == 1 else None
+
+    def held(self, t: float) -> bool:
+        """Toque longo no rosto (na câmera, não fecha nada)."""
+        pressed = self._pressed_at
+        return not self.camera and pressed is not None and t - pressed >= HOLD_TO_CLOSE
+
+    def camera_closed(self) -> None:
+        self.camera = False
+        self._taps = []
+
+
+def touch_changes(data: bytes) -> list[bool]:
+    """Pressões (True) e solturas (False) do toque em eventos crus do evdev."""
+    usable = len(data) - len(data) % _INPUT_EVENT.size
+    return [
+        value == 1
+        for _sec, _usec, kind, code, value in _INPUT_EVENT.iter_unpack(data[:usable])
+        if kind == _EV_KEY and code == _BTN_TOUCH and value in (0, 1)
+    ]
+
+
+def has_touch_button(capabilities: str) -> bool:
+    """O `capabilities/key` do sysfs (hex, palavra mais alta primeiro) tem BTN_TOUCH."""
+    bits = struct.calcsize("l") * 8
+    words = capabilities.split()
+    index = len(words) - 1 - _BTN_TOUCH // bits
+    if index < 0:
+        return False
+    return bool(int(words[index], 16) >> (_BTN_TOUCH % bits) & 1)
+
+
+def find_touchscreen(root: Path = ROOT) -> Path | None:
+    """Primeiro `/dev/input/eventN` com botão de toque, ou None."""
+    for event in sorted((root / "sys/class/input").glob("event*")):
+        try:
+            capabilities = (event / "device/capabilities/key").read_text("ascii")
+        except (OSError, ValueError):
+            continue
+        if has_touch_button(capabilities):
+            return root / "dev/input" / event.name
+    return None
+
+
+def read_touches(
+    path: Path,
+    sink: Callable[[float, bool], None],
+    clock: Callable[[], float] = time.monotonic,
+) -> None:
+    """Lê o dispositivo até o fim ou um erro, entregando (instante, pressionado).
+
+    Não toma o dispositivo para si: a sessão gráfica continua recebendo os toques.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    pending = b""
+    try:
+        while True:
+            try:
+                chunk = os.read(fd, _INPUT_EVENT.size * 16)
+            except OSError:
+                return
+            if not chunk:
+                return
+            pending += chunk
+            usable = len(pending) - len(pending) % _INPUT_EVENT.size
+            for down in touch_changes(pending[:usable]):
+                sink(clock(), down)
+            pending = pending[usable:]
+    finally:
+        os.close(fd)
+
+
+class Process(Protocol):
+    def poll(self) -> int | None: ...
+    def terminate(self) -> None: ...
+    def kill(self) -> None: ...
+    def wait(self, timeout: float | None = None) -> int: ...
+
+
+def _spawn(args: Sequence[str]) -> Process:
+    return subprocess.Popen(
+        list(args),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+class CameraView:
+    """Imagem ao vivo da câmera em tela cheia, por cima do rosto (`rpicam-hello`)."""
+
+    def __init__(
+        self,
+        command: Sequence[str] = CAMERA_COMMAND,
+        spawn: Callable[[Sequence[str]], Process] = _spawn,
+    ) -> None:
+        self._command, self._spawn = tuple(command), spawn
+        self._process: Process | None = None
+
+    def open(self) -> bool:
+        if self.running():
+            return True
+        try:
+            self._process = self._spawn(self._command)
+        except OSError:
+            self._process = None
+            return False
+        return True
+
+    def running(self) -> bool:
+        return self._process is not None and self._process.poll() is None
+
+    def close(self) -> None:
+        process, self._process = self._process, None
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
 def needs_fullscreen(width: int, height: int, screen_w: int, screen_h: int) -> bool:
     """A janela está visivelmente menor que a tela (tolerância de 5%)."""
     return width < screen_w * 0.95 or height < screen_h * 0.95
@@ -328,8 +508,15 @@ def run_window(
     fullscreen: bool,
     seconds: float,
     colors: Sequence[str] = DEFAULT_PALETTE,
+    touch: Path | None = None,
+    camera: CameraView | None = None,
 ) -> None:
-    """Desenha o rosto em Tk até Esc, toque longo ou `seconds` (0 = sem fim)."""
+    """Desenha o rosto em Tk até Esc, toque longo ou `seconds` (0 = sem fim).
+
+    Com `touch` (o `/dev/input/eventN` da tela), os toques são lidos direto do
+    dispositivo, inclusive quando a câmera está na frente do rosto; sem ele, vêm
+    do Tk, e os gestos da câmera ficam desligados.
+    """
     import tkinter
 
     try:
@@ -359,11 +546,47 @@ def run_window(
 
     start = time.monotonic()
     delay = max(1, round(1000 / fps))
-    pressed: list[float] = []
     guard = FullscreenGuard() if fullscreen else None
+    gestures = Gestures(camera_enabled=camera is not None and touch is not None)
+    touches: queue.SimpleQueue[tuple[float, bool]] = queue.SimpleQueue()
+    camera_since: list[float] = []
+    if touch is not None:
+
+        def deliver(at: float, down: bool) -> None:
+            touches.put((at - start, down))
+
+        reader = threading.Thread(target=read_touches, args=(touch, deliver))
+        reader.daemon = True
+        reader.start()
 
     def now() -> float:
         return time.monotonic() - start
+
+    def close() -> None:
+        if camera is not None:
+            camera.close()
+        root.destroy()
+
+    def handle(action: str | None, t: float) -> None:
+        if action == "feliz":
+            animator.react(t)
+        elif action == "camera":
+            if camera is not None and camera.open():
+                camera_since[:] = [t]
+            else:
+                gestures.camera_closed()
+        elif action == "rosto" and camera is not None:
+            camera.close()
+
+    def follow_camera(t: float) -> None:
+        """Volta ao rosto se a câmera parou sozinha ou passou do tempo máximo."""
+        if not gestures.camera:
+            return
+        expired = bool(camera_since) and t - camera_since[0] >= CAMERA_MAX
+        if camera is None or expired or not camera.running():
+            if camera is not None:
+                camera.close()
+            gestures.camera_closed()
 
     def keep_fullscreen() -> None:
         size = (root.winfo_width(), root.winfo_height())
@@ -376,8 +599,15 @@ def run_window(
 
     def tick() -> None:
         t = now()
-        if (seconds and t >= seconds) or (pressed and t - pressed[0] >= HOLD_TO_CLOSE):
-            root.destroy()
+        while not touches.empty():
+            at, down = touches.get_nowait()
+            if down:
+                gestures.press(at)
+            else:
+                handle(gestures.release(at), at)
+        follow_camera(t)
+        if (seconds and t >= seconds) or gestures.held(t):
+            close()
             return
         if guard is not None and guard.due(t):
             keep_fullscreen()
@@ -387,16 +617,18 @@ def run_window(
         root.after(delay, tick)
 
     def press(_event: object) -> None:
-        pressed[:] = [now()]
+        if touch is None:
+            gestures.press(now())
 
     def release(_event: object) -> None:
-        if pressed and now() - pressed[0] < TAP:
-            animator.react(now())
-        pressed.clear()
+        if touch is None:
+            handle(gestures.release(now()), now())
 
     canvas.bind("<ButtonPress-1>", press)
     canvas.bind("<ButtonRelease-1>", release)
-    root.bind("<Escape>", lambda _event: root.destroy())
+    root.bind("<Escape>", lambda _event: close())
+    # SIGTERM (ex.: systemctl stop) também fecha a câmera antes de sair.
+    signal.signal(signal.SIGTERM, lambda _signum, _frame: root.after(0, close))
     root.after(0, tick)
     root.mainloop()
 
@@ -448,6 +680,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     program = ((args.expression, 6.0),) if args.expression else PROGRAM
+    # Os gestos da câmera precisam do touchscreen lido direto (a janela da câmera
+    # fica na frente do rosto); em janela, para testes, ficam desligados.
+    touch = None if args.windowed else find_touchscreen()
     try:
         run_window(
             Animator(program),
@@ -455,6 +690,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             not args.windowed,
             args.seconds,
             palette(args.color),
+            touch=touch,
+            camera=CameraView() if touch is not None else None,
         )
     except RuntimeError as error:
         print(f"neoson-face: {error}", file=sys.stderr)

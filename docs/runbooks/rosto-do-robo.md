@@ -15,8 +15,23 @@ só como reação ao toque.
 Toque na tela:
 
 - **toque curto**: o rosto fica feliz por 2,5 s e volta ao loop;
-- **toque longo (3 s)** ou **Esc**: fecha o rosto e devolve a área de trabalho (para, por
-  exemplo, reiniciar a Pi pelo menu). O atalho "Rosto do NeoSon" no menu reabre o rosto.
+- **3 toques rápidos** (até 0,5 s entre eles): mostra a imagem ao vivo da câmera em tela
+  cheia, por cima do rosto;
+- **2 toques rápidos**, com a câmera aberta: fecha a câmera e volta ao rosto;
+- **toque longo (3 s)** no rosto, ou **Esc**: fecha o rosto e devolve a área de trabalho
+  (para, por exemplo, reiniciar a Pi pelo menu). O atalho "Rosto do NeoSon" no menu reabre
+  o rosto. Com a câmera aberta, o toque longo não fecha nada.
+
+### Câmera
+
+A imagem da câmera é o `rpicam-hello -t 0 --fullscreen`, aberto e fechado pelo rosto. Como a
+janela da câmera fica na frente, os toques são lidos direto do touchscreen (`/dev/input/eventN`,
+o primeiro dispositivo com `BTN_TOUCH` em `capabilities/key`), sem tomá-lo da sessão gráfica: o
+usuário precisa estar no grupo `input`. Sem touchscreen encontrado (ou com `--windowed`), os
+toques vêm do Tk e os gestos da câmera ficam desligados, para nunca deixar a câmera aberta sem
+jeito de voltar. Por segurança, a câmera também volta sozinha ao rosto depois de 5 minutos
+(`CAMERA_MAX`) ou se o `rpicam-hello` parar (por exemplo, sem câmera conectada). Fechar o rosto
+(Esc, toque longo ou `systemctl --user stop`) fecha a câmera junto.
 
 O programa é o módulo `neoson_robot.face`, só com a biblioteca padrão (Tk para desenhar). A
 lógica (formas, linha do tempo e cena em pixels) é testada sem tela; o desenho é escalado e

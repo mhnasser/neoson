@@ -1,30 +1,43 @@
+import struct
+import subprocess
+from collections.abc import Sequence
 from dataclasses import astuple
+from pathlib import Path
 
 import pytest
 
 from neoson_robot import face as face_module
 from neoson_robot.face import (
     BLINK,
+    CAMERA_COMMAND,
     CORNER_STEPS,
     DEFAULT_PALETTE,
     EXPRESSIONS,
+    HOLD_TO_CLOSE,
     LAYERS,
     PROGRAM,
     REACTION,
+    TAP,
     TRANSITION,
     Animator,
+    CameraView,
     Eye,
     Face,
     FullscreenGuard,
+    Gestures,
     blink_factor,
     eye_outline,
     eyelid_box,
+    find_touchscreen,
+    has_touch_button,
     needs_fullscreen,
     palette,
     parse_color,
     program_face,
+    read_touches,
     rounded_rect,
     scene,
+    touch_changes,
 )
 
 CYCLE = sum(duration for _, duration in PROGRAM)
@@ -174,7 +187,9 @@ def test_palette_derives_glow_rim_and_core_from_one_color() -> None:
             parse_color(bad)
 
 
-def test_cli_runs_window_with_chosen_program(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_runs_window_with_chosen_program(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     calls: list[tuple[object, ...]] = []
 
     def fake_run(
@@ -183,10 +198,17 @@ def test_cli_runs_window_with_chosen_program(monkeypatch: pytest.MonkeyPatch) ->
         fullscreen: bool,
         seconds: float,
         colors: tuple[str, str, str],
+        touch: Path | None = None,
+        camera: CameraView | None = None,
     ) -> None:
-        calls.append((animator.program, fps, fullscreen, seconds, colors))
+        has_camera = camera is not None
+        calls.append(
+            (animator.program, fps, fullscreen, seconds, colors, touch, has_camera)
+        )
 
+    screen = tmp_path / "event7"
     monkeypatch.setattr(face_module, "run_window", fake_run)
+    monkeypatch.setattr(face_module, "find_touchscreen", lambda: screen)
     assert face_module.main([]) == 0
     options = [
         "--expression",
@@ -198,9 +220,12 @@ def test_cli_runs_window_with_chosen_program(monkeypatch: pytest.MonkeyPatch) ->
         "#FF8800",
     ]
     assert face_module.main(options) == 0
+    monkeypatch.setattr(face_module, "find_touchscreen", lambda: None)
+    assert face_module.main([]) == 0
     assert calls == [
-        (PROGRAM, 30, True, 0.0, DEFAULT_PALETTE),
-        ((("feliz", 6.0),), 20, False, 0.0, palette("#ff8800")),
+        (PROGRAM, 30, True, 0.0, DEFAULT_PALETTE, screen, True),
+        ((("feliz", 6.0),), 20, False, 0.0, palette("#ff8800"), None, False),
+        (PROGRAM, 30, True, 0.0, DEFAULT_PALETTE, None, False),
     ]
 
 
@@ -213,10 +238,13 @@ def test_cli_without_display_and_bad_options(
         fullscreen: bool,
         seconds: float,
         colors: tuple[str, str, str],
+        touch: Path | None = None,
+        camera: CameraView | None = None,
     ) -> None:
         raise RuntimeError("sem tela gráfica disponível.")
 
     monkeypatch.setattr(face_module, "run_window", no_display)
+    monkeypatch.setattr(face_module, "find_touchscreen", lambda: None)
     assert face_module.main(["--seconds", "1"]) == 1
     assert "sem tela gráfica" in capsys.readouterr().err
 
@@ -248,3 +276,165 @@ def test_needs_fullscreen_only_when_window_is_clearly_smaller() -> None:
     assert not needs_fullscreen(800, 480, 800, 480)
     assert not needs_fullscreen(790, 470, 800, 480)  # tolerância de 5%
     assert needs_fullscreen(800, 400, 800, 480)
+
+
+def tap(gestures: Gestures, t: float) -> str | None:
+    gestures.press(t)
+    return gestures.release(t + 0.1)
+
+
+def test_single_tap_makes_the_face_happy() -> None:
+    gestures = Gestures()
+    assert tap(gestures, 1.0) == "feliz"
+    assert tap(gestures, 3.0) == "feliz"  # depois da janela: outra sequência
+
+
+def test_three_quick_taps_open_camera_and_two_close_it() -> None:
+    gestures = Gestures()
+    assert [tap(gestures, t) for t in (1.0, 1.3, 1.6)] == ["feliz", None, "camera"]
+    assert gestures.camera
+    assert tap(gestures, 5.0) is None  # um toque só não volta
+    assert tap(gestures, 5.3) == "rosto"
+    assert not gestures.camera
+    assert tap(gestures, 8.0) == "feliz"
+
+
+def test_slow_taps_and_long_presses_are_not_a_sequence() -> None:
+    gestures = Gestures()
+    assert [tap(gestures, t) for t in (1.0, 2.0, 3.0)] == ["feliz"] * 3
+    gestures.press(10.0)
+    assert gestures.release(10.0 + TAP + 0.05) is None  # não é toque curto
+    gestures.press(20.0)
+    assert not gestures.held(22.0)
+    assert gestures.held(20.0 + HOLD_TO_CLOSE)
+
+
+def test_camera_gestures_can_be_off_and_long_press_on_camera_keeps_it() -> None:
+    off = Gestures(camera_enabled=False)
+    assert [tap(off, t) for t in (1.0, 1.3, 1.6)] == ["feliz", None, None]
+    assert not off.camera
+
+    on = Gestures()
+    for t in (1.0, 1.3, 1.6):
+        tap(on, t)
+    on.press(5.0)
+    assert not on.held(5.0 + 10 * HOLD_TO_CLOSE)
+    on.camera_closed()
+    assert not on.camera
+
+
+def input_event(kind: int, code: int, value: int) -> bytes:
+    return struct.pack("llHHi", 0, 0, kind, code, value)
+
+
+def touch_caps() -> str:
+    bits = struct.calcsize("l") * 8
+    return f"{1 << (0x14A % bits):x}" + " 0" * (0x14A // bits)
+
+
+def test_touch_changes_reads_only_the_touch_button() -> None:
+    data = (
+        input_event(1, 0x14A, 1)  # BTN_TOUCH pressionado
+        + input_event(3, 0x35, 120)  # posição (ignorada)
+        + input_event(0, 0, 0)  # SYN
+        + input_event(1, 0x14A, 0)  # BTN_TOUCH solto
+        + input_event(1, 0x110, 1)  # outro botão
+        + input_event(1, 0x14A, 2)  # repetição
+    )
+    assert touch_changes(data) == [True, False]
+    assert touch_changes(data[:-5]) == [True, False]  # evento cortado no fim
+
+
+def test_touch_button_capability_bits() -> None:
+    assert has_touch_button(touch_caps())
+    assert not has_touch_button(" ".join(["0"] * 11))
+    assert not has_touch_button("ffff")  # poucas palavras: o bit nem existe
+    if struct.calcsize("l") == 8:
+        assert has_touch_button("400 0 0 0 0 0")  # a tela de 7" da Pi
+
+
+def test_find_touchscreen_picks_the_device_with_touch_button(tmp_path: Path) -> None:
+    base = tmp_path / "sys/class/input"
+    for name, caps in (("event5", None), ("event6", "3 0"), ("event7", touch_caps())):
+        folder = base / name / "device" / "capabilities"
+        folder.mkdir(parents=True)
+        if caps is not None:
+            (folder / "key").write_text(caps + "\n")
+    assert find_touchscreen(tmp_path) == tmp_path / "dev/input/event7"
+    (base / "event7/device/capabilities/key").write_text("0\n")
+    assert find_touchscreen(tmp_path) is None
+
+
+def test_read_touches_streams_presses_until_the_end(tmp_path: Path) -> None:
+    device = tmp_path / "event7"
+    device.write_bytes(
+        input_event(1, 0x14A, 1) + input_event(0, 0, 0) + input_event(1, 0x14A, 0)
+    )
+    seen: list[tuple[float, bool]] = []
+    read_touches(device, lambda t, down: seen.append((t, down)), clock=lambda: 7.0)
+    assert seen == [(7.0, True), (7.0, False)]
+    read_touches(tmp_path / "nada", lambda t, down: seen.append((t, down)))
+    assert len(seen) == 2
+
+
+class FakeProcess:
+    def __init__(self, stubborn: bool = False) -> None:
+        self.code: int | None = None
+        self.stubborn = stubborn
+        self.calls: list[str] = []
+
+    def poll(self) -> int | None:
+        return self.code
+
+    def terminate(self) -> None:
+        self.calls.append("terminate")
+        if not self.stubborn:
+            self.code = -15
+
+    def kill(self) -> None:
+        self.calls.append("kill")
+        self.code = -9
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.calls.append("wait")
+        if self.code is None:
+            raise subprocess.TimeoutExpired("rpicam-hello", timeout or 0.0)
+        return self.code
+
+
+def test_camera_view_opens_once_and_closes_the_process() -> None:
+    spawned: list[tuple[tuple[str, ...], FakeProcess]] = []
+
+    def spawn(args: Sequence[str]) -> FakeProcess:
+        spawned.append((tuple(args), FakeProcess()))
+        return spawned[-1][1]
+
+    camera = CameraView(spawn=spawn)
+    assert not camera.running()
+    assert camera.open() and camera.open()
+    assert [args for args, _ in spawned] == [CAMERA_COMMAND]
+    assert camera.running()
+    camera.close()
+    assert spawned[0][1].calls == ["terminate", "wait"]
+    assert not camera.running()
+    camera.close()  # de novo: nada a fazer
+    assert spawned[0][1].calls == ["terminate", "wait"]
+
+
+def test_camera_view_kills_stubborn_process_and_handles_missing_camera() -> None:
+    stubborn = FakeProcess(stubborn=True)
+    camera = CameraView(spawn=lambda args: stubborn)
+    camera.open()
+    camera.close()
+    assert stubborn.calls == ["terminate", "wait", "kill", "wait"]
+
+    def missing(args: Sequence[str]) -> FakeProcess:
+        raise FileNotFoundError("rpicam-hello")
+
+    assert not CameraView(spawn=missing).open()
+
+    ended = FakeProcess()
+    camera = CameraView(spawn=lambda args: ended)
+    camera.open()
+    ended.code = 1  # o rpicam-hello saiu sozinho (ex.: câmera desconectada)
+    assert not camera.running()
