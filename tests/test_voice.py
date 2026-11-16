@@ -286,6 +286,19 @@ def test_tts_failure_keeps_result_without_rerunning_engine(
     assert len(engine.received) == 1
 
 
+def test_speech_pronounces_the_name_but_the_text_keeps_the_spelling(
+    parts: tuple[Engine, Speech, VoicePipeline],
+) -> None:
+    engine, speech, pipeline = parts
+    text = "Oi, eu sou o NeoSon. NEOSON, neoson e Neo Son; não NeoSonar."
+    engine.result = replace(engine.result, text=text)
+    response = client(pipeline).post("/api/v1/voice", content=WAV)
+    assert response.status_code == 200 and response.json()["text"] == text
+    assert speech.outputs == [
+        "Oi, eu sou o Néusson. Néusson, Néusson e Néusson; não NeoSonar."
+    ]
+
+
 def test_approval_and_failed_status_remain_explicit(
     parts: tuple[Engine, Speech, VoicePipeline],
 ) -> None:

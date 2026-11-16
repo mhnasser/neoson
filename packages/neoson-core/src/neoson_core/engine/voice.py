@@ -3,6 +3,7 @@
 import asyncio
 import io
 import math
+import re
 import struct
 import wave
 from collections.abc import Awaitable, Callable
@@ -15,6 +16,9 @@ from neoson_core.engine.conversation import Engine, RunResult, UserMessage
 from neoson_core.engine.persistence import SessionNotFound
 
 SAMPLE_RATE = 16000
+# Grafia só para a síntese: o nome se pronuncia "Néuson"; "ss" evita que o "s" soe "z".
+# O texto continua "NeoSon".
+PRONUNCIATIONS = ((re.compile(r"\bneo ?son\b", re.IGNORECASE), "Néusson"),)
 AudioStatus = Literal["ready", "synthesis_timeout", "synthesis_failed", "text_too_long"]
 VoiceActivity = Literal["transcribing", "thinking", "using_tool"]
 
@@ -130,6 +134,13 @@ def read_wav(
     return AudioClip(pcm_wav(pcm), seconds)
 
 
+def for_speech(text: str) -> str:
+    """Texto entregue à síntese, com a grafia que soa como a pronúncia certa."""
+    for pattern, spoken in PRONUNCIATIONS:
+        text = pattern.sub(spoken, text)
+    return text
+
+
 class Transcriber(Protocol):
     async def transcribe(self, audio: AudioClip) -> str: ...
 
@@ -224,7 +235,7 @@ class VoicePipeline:
                 return VoiceResult(result, audio_status="text_too_long")
             try:
                 response = await asyncio.wait_for(
-                    self.synthesizer.synthesize(result.text),
+                    self.synthesizer.synthesize(for_speech(result.text)),
                     timeout=max(deadline - monotonic(), 0),
                 )
                 output = read_wav(response, self.limits, self.limits.max_output_seconds)

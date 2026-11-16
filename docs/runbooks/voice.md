@@ -34,6 +34,11 @@ mensagens, com `audio_base64`, `audio_format: wav`, `sample_rate_hz: 16000`,
 não for null e o estado for `ready`. Falha de síntese mantém o resultado textual e IDs;
 não repita a conversa para tentar obter áudio.
 
+Pronúncia do nome: antes da síntese, `NeoSon` e `Neo Son` (sem diferenciar maiúsculas)
+viram `Néusson`, que soa "Néuson"; com um "s" só, o sintetizador lê "Néuzon". Vale para
+qualquer fornecedor de síntese, e o `text` da resposta continua `NeoSon`. Outras grafias
+entram em `PRONUNCIATIONS`, em `engine/voice.py`.
+
 ## Fala real com a OpenAI
 
 Escolha explícita, desligada por padrão. O áudio de cada pedido e o texto da resposta
