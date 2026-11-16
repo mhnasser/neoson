@@ -1,7 +1,7 @@
 # Runbook — Backup e restauração
 
-Procedimento para copiar e recuperar os dados do NeoSon: o banco SQLite (`NEOSON_DB_PATH`) e o
-vault do Obsidian (`NEOSON_VAULT_PATH`). Referências: especificação §18 e §21, ADR-002.
+Procedimento para copiar e recuperar os dados do NeoSon: o banco SQLite (`NEOSON_DB_PATH`), o
+vault do Obsidian (`NEOSON_VAULT_PATH`) e os originais dos documentos (`NEOSON_DOCUMENTS_PATH`). Referências: especificação §18 e §21, ADR-002.
 
 ## O que entra no backup
 
@@ -9,6 +9,7 @@ vault do Obsidian (`NEOSON_VAULT_PATH`). Referências: especificação §18 e §
 |---|---|---|
 | Banco SQLite | API de backup do SQLite | Cópia consistente mesmo com gateway e worker rodando |
 | Vault | cópia da pasta inteira | Arquivos `.tmp` de escrita em andamento ficam de fora |
+| Originais dos documentos | cópia de `NEOSON_DOCUMENTS_PATH` | Restaurados junto quando o backup os tem; backups antigos, sem essa pasta, continuam válidos |
 | `manifest.json` | gerado no backup | Data, versão do esquema, contagens por tabela e SHA-256 de cada arquivo |
 
 **Não entra:** o `neoson.env`, porque tem segredos (chave da OpenAI, token da API, token do bot).

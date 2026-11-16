@@ -1,8 +1,9 @@
 """Backup e restauração do SQLite e do vault (§18, ADR-002).
 
 Cada backup é uma pasta com `neoson.db` (cópia consistente pela API de backup),
-`vault/` e `manifest.json` (hashes, versão do esquema e contagens). Segredos
-(`neoson.env`) não entram no backup.
+`vault/`, opcionalmente `documents/` (originais dos documentos ingeridos) e
+`manifest.json` (hashes, versão do esquema e contagens). Segredos (`neoson.env`)
+não entram no backup. Manifestos sem `documents` continuam válidos.
 """
 
 import hashlib
@@ -20,6 +21,7 @@ from neoson_core.infrastructure.db import integrity_ok, schema_version
 MANIFEST = "manifest.json"
 DB_FILE = "neoson.db"
 VAULT_DIR = "vault"
+DOCUMENTS_DIR = "documents"
 COUNTED_TABLES = (
     "sessions",
     "messages",
@@ -43,9 +45,15 @@ class BackupInfo:
     schema_version: int
     counts: Mapping[str, int]
     vault_files: int
+    document_files: int = 0
 
 
-def create(db_path: Path, vault_path: Path, destination: Path) -> BackupInfo:
+def create(
+    db_path: Path,
+    vault_path: Path,
+    destination: Path,
+    documents_path: Path | None = None,
+) -> BackupInfo:
     """Cria `destination/neoson-backup-AAAAMMDD-HHMMSS` e devolve o resumo."""
     if not db_path.exists():
         raise BackupError(f"Banco não encontrado: {db_path}")
@@ -61,7 +69,7 @@ def create(db_path: Path, vault_path: Path, destination: Path) -> BackupInfo:
     else:
         (target / VAULT_DIR).mkdir()
 
-    manifest = {
+    manifest: dict[str, object] = {
         "format": 1,
         "created_at": created.isoformat(),
         "schema_version": _schema_version(target / DB_FILE),
@@ -69,6 +77,14 @@ def create(db_path: Path, vault_path: Path, destination: Path) -> BackupInfo:
         "database_sha256": _sha256(target / DB_FILE),
         "vault": _vault_hashes(target / VAULT_DIR),
     }
+    if documents_path is not None:
+        if documents_path.exists():
+            shutil.copytree(documents_path, target / DOCUMENTS_DIR)
+        else:
+            (target / DOCUMENTS_DIR).mkdir()
+        manifest["documents"] = _vault_hashes(
+            target / DOCUMENTS_DIR, include_temporary=True
+        )
     (target / MANIFEST).write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
     )
@@ -88,33 +104,50 @@ def verify(path: Path) -> BackupInfo:
         raise BackupError("Banco do backup falhou no integrity_check.")
     if _vault_hashes(path / VAULT_DIR) != manifest["vault"]:
         raise BackupError("Arquivos do vault diferentes do manifesto.")
+    documents = manifest.get("documents")
+    if (
+        documents is not None
+        and _vault_hashes(path / DOCUMENTS_DIR, include_temporary=True) != documents
+    ):
+        raise BackupError("Originais dos documentos diferentes do manifesto.")
     return BackupInfo(
         path=path,
         created_at=datetime.fromisoformat(manifest["created_at"]),
         schema_version=manifest["schema_version"],
         counts=manifest["counts"],
         vault_files=len(manifest["vault"]),
+        document_files=len(documents or {}),
     )
 
 
 def restore(
-    path: Path, db_path: Path, vault_path: Path, force: bool = False
+    path: Path,
+    db_path: Path,
+    vault_path: Path,
+    force: bool = False,
+    documents_path: Path | None = None,
 ) -> list[Path]:
     """Restaura um backup verificado; devolve o que foi guardado de lado.
 
-    Sem `force`, recusa se já houver banco ou vault no destino. Com `force`, os
-    atuais são renomeados (`*.antes-da-restauracao-…`), nunca apagados. Pare o
-    gateway e o worker antes.
+    Sem `force`, recusa se já houver banco, vault ou documentos no destino. Com
+    `force`, os atuais são renomeados (`*.antes-da-restauracao-…`), nunca apagados.
+    Os documentos só são restaurados quando o backup os tem e `documents_path` é
+    informado. Pare o gateway e o worker antes.
     """
     info = verify(path)
-    existing = [p for p in (db_path, vault_path) if p.exists()]
+    manifest = json.loads((path / MANIFEST).read_text(encoding="utf-8"))
+    with_documents = documents_path is not None and "documents" in manifest
+    targets = [db_path, vault_path] + (
+        [documents_path] if with_documents and documents_path is not None else []
+    )
+    existing = [p for p in targets if p.exists()]
     if existing and not force:
         raise BackupError(
             "Já existem dados no destino: "
             + ", ".join(str(p) for p in existing)
             + ". Use --force para guardá-los de lado e restaurar."
         )
-    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
     if db_path.exists():
         # Traz o conteúdo do WAL para o arquivo principal: com outro nome, o SQLite
         # não emparelharia a cópia guardada com o `-wal` dela.
@@ -124,7 +157,7 @@ def restore(
         finally:
             connection.close()
     kept = []
-    for current in [*_db_files(db_path), vault_path]:
+    for current in [*_db_files(db_path), *targets[1:]]:
         if current.exists():
             aside = current.with_name(f"{current.name}.antes-da-restauracao-{stamp}")
             current.rename(aside)
@@ -133,6 +166,8 @@ def restore(
     db_path.parent.mkdir(parents=True, exist_ok=True)
     sqlite_backup(path / DB_FILE, db_path)
     shutil.copytree(path / VAULT_DIR, vault_path)
+    if with_documents and documents_path is not None:
+        shutil.copytree(path / DOCUMENTS_DIR, documents_path)
     if not integrity_ok(db_path) or _schema_version(db_path) != info.schema_version:
         raise BackupError("O banco restaurado não confere com o backup.")
     return kept
@@ -170,13 +205,13 @@ def _counts(db_file: Path) -> dict[str, int]:
         connection.close()
 
 
-def _vault_hashes(root: Path) -> dict[str, str]:
+def _vault_hashes(root: Path, *, include_temporary: bool = False) -> dict[str, str]:
     if not root.exists():
         return {}
     return {
         file.relative_to(root).as_posix(): _sha256(file)
         for file in sorted(root.rglob("*"))
-        if file.is_file() and not file.name.endswith(".tmp")
+        if file.is_file() and (include_temporary or not file.name.endswith(".tmp"))
     }
 
 

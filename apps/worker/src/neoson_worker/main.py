@@ -162,3 +162,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     worker.run_forever(stop, settings.worker_poll_seconds)
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

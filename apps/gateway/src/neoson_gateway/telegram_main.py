@@ -65,3 +65,7 @@ def main() -> None:
         raise SystemExit(f"Telegram recusou o bot: {error}") from None
     except KeyboardInterrupt:
         pass
+
+
+if __name__ == "__main__":
+    main()

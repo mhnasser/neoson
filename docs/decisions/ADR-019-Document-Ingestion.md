@@ -48,8 +48,8 @@ Dataview executa como JavaScript.
 
 ## Consequências
 
-O backup do NeoSon cobre o SQLite (registro, trechos, fatos) e o vault (notas), mas não
-a pasta dos originais: ela precisa entrar na cópia manual. Documentos esquecidos não
+O backup do NeoSon cobre o SQLite (registro, trechos, fatos), o vault (notas) e, desde
+a atualização do backup, a pasta dos originais. Documentos esquecidos não
 voltam pelo mesmo arquivo. A busca `memory_search` não procura nos documentos; eles
 chegam às respostas pelos fatos revisados. Operação no
 [runbook](../runbooks/documentos.md).

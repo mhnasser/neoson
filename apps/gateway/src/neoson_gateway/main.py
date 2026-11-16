@@ -43,3 +43,7 @@ def main() -> None:
         log_level=settings.log_level.lower(),
         log_config=None,
     )
+
+
+if __name__ == "__main__":
+    main()

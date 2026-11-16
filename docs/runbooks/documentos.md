@@ -46,6 +46,5 @@ fica como `forgotten` e o mesmo arquivo não pode ser ingerido de novo.
 | `NEOSON_DOCUMENT_MAX_CHARS` | 200000 |
 | `NEOSON_DOCUMENT_CHUNK_CHARS` | 3000 (cada trecho também precisa caber no limite de entrada da extração) |
 
-`neoson-backup` copia o banco e o vault, mas **não** a pasta dos originais. Inclua
-`NEOSON_DOCUMENTS_PATH` na sua cópia de segurança. A migração 18 roda na abertura do
-banco; faça backup antes de atualizar.
+`neoson-backup` copia o banco, o vault e a pasta dos originais (`NEOSON_DOCUMENTS_PATH`).
+A migração 18 roda na abertura do banco; faça backup antes de atualizar.

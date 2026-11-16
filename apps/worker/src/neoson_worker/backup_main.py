@@ -1,4 +1,4 @@
-"""Comando `neoson-backup`: cria, verifica e restaura backups do banco e do vault."""
+"""Comando `neoson-backup`: cria, verifica e restaura banco, vault e documentos."""
 
 import argparse
 import sys
@@ -38,7 +38,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "create":
             info = backup.create(
-                settings.db_path, settings.vault_path, args.dest or settings.backup_path
+                settings.db_path,
+                settings.vault_path,
+                args.dest or settings.backup_path,
+                settings.documents_path,
             )
             print(f"Backup criado em {info.path}")
             _describe(info)
@@ -47,7 +50,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Backup íntegro.")
         else:
             kept = backup.restore(
-                args.path, settings.db_path, settings.vault_path, force=args.force
+                args.path,
+                settings.db_path,
+                settings.vault_path,
+                force=args.force,
+                documents_path=settings.documents_path,
             )
             for path in kept:
                 print(f"Guardado de lado: {path}")
@@ -64,4 +71,9 @@ def _describe(info: backup.BackupInfo) -> None:
         f"  criado em {info.created_at:%Y-%m-%d %H:%M} UTC"
         f" | esquema v{info.schema_version} | {counts}"
         f" | vault: {info.vault_files} arquivo(s)"
+        f" | documentos: {info.document_files} original(is)"
     )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -55,3 +55,7 @@ def main(argv: Sequence[str] | None = None, http: httpx2.Client | None = None) -
     if args.show_session and reply.session_id is not None:
         print(f"sessão: {reply.session_id}", file=sys.stderr)
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

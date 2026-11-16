@@ -153,3 +153,7 @@ def _validate(paths: list[Path], library: Path) -> int:
         for problem in invalid.problems:
             print(f"     - {problem}", file=sys.stderr)
     return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
