@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import UTC, date, datetime
 from pathlib import Path
+from unittest.mock import Mock
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -264,8 +265,11 @@ def test_atomic_write_skips_unchanged_content(tmp_path: Path) -> None:
 
 
 def test_worker_exports_the_vault_without_conversation_content(
-    db: Path, tmp_path: Path
+    db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = datetime(2026, 10, 20, tzinfo=ZONE)
+    monkeypatch.setattr("neoson_core.telemetry.vault.datetime", clock)
     vault = tmp_path / "NeoSon-Vault"
 
     process(db, vault)

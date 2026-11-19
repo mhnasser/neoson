@@ -322,6 +322,9 @@ O [`.env.example`](.env.example) lista todas as variáveis, com os padrões e os
 
 ## Testes e qualidade
 
+Para preparar unidades de usuário no Linux, revisar a instalação com `--dry-run`
+e gravar um corpus local de voz, consulte [serviços contínuos](docs/runbooks/servicos-continuos.md).
+
 ```bash
 uv run pytest                  # testes
 uv run ruff check .            # lint

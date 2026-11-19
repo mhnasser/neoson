@@ -35,6 +35,7 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 markers = ["live: chama APIs reais; roda só com NEOSON_LIVE_TESTS=1"]
 
