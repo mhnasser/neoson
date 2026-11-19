@@ -28,6 +28,7 @@ from neoson_core.engine.voice import (
     VoiceResult,
 )
 from neoson_gateway.actions import HTTP_OWNER
+from neoson_gateway.voice_replay import VoiceReplayGuard
 
 
 def _headers(request: Request, pipeline: VoicePipeline) -> None:
@@ -93,15 +94,26 @@ def _response(value: VoiceResult, pipeline: VoicePipeline) -> VoiceResponse:
 
 
 def voice_router(
-    pipeline: VoicePipeline, auth: Callable[..., Awaitable[None]]
+    pipeline: VoicePipeline,
+    auth: Callable[..., Awaitable[None]],
+    replay: VoiceReplayGuard | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["voice"], dependencies=[Depends(auth)])
+
+    async def claim(request: Request) -> None:
+        _headers(request, pipeline)
+        if replay is not None:
+            await asyncio.to_thread(
+                replay.claim,
+                request.headers.get("x-neoson-request-id"),
+                request.headers.get("x-neoson-request-time"),
+            )
 
     @router.post("/voice", response_model=VoiceResponse)
     async def voice(
         request: Request, response: Response, session_id: UUID | None = None
     ) -> VoiceResponse:
-        _headers(request, pipeline)
+        await claim(request)
         value = await _process(pipeline, request, session_id)
         response.headers["Cache-Control"] = "no-store"
         return _response(value, pipeline)
@@ -110,7 +122,7 @@ def voice_router(
     async def stream(
         request: Request, session_id: UUID | None = None
     ) -> StreamingResponse:
-        _headers(request, pipeline)
+        await claim(request)
         queue: asyncio.Queue[VoiceProgress | VoiceCompleted | HTTPException] = (
             asyncio.Queue(16)
         )

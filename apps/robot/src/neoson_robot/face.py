@@ -510,6 +510,8 @@ def run_window(
     colors: Sequence[str] = DEFAULT_PALETTE,
     touch: Path | None = None,
     camera: CameraView | None = None,
+    on_action: Callable[[str, float], None] | None = None,
+    status: Callable[[float], str] | None = None,
 ) -> None:
     """Desenha o rosto em Tk até Esc, toque longo ou `seconds` (0 = sem fim).
 
@@ -537,6 +539,9 @@ def run_window(
         root, background=BACKGROUND, highlightthickness=0, cursor="none"
     )
     canvas.pack(fill="both", expand=True)
+    label = (
+        canvas.create_text(0, 0, fill="white", font=("sans", 22)) if status else None
+    )
     flat = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     items: list[int] = []
     for _ in range(2):
@@ -568,6 +573,8 @@ def run_window(
         root.destroy()
 
     def handle(action: str | None, t: float) -> None:
+        if action is not None and on_action is not None:
+            on_action(action, t)
         if action == "feliz":
             animator.react(t)
         elif action == "camera":
@@ -614,6 +621,9 @@ def run_window(
         coords = scene(animator.frame(t), canvas.winfo_width(), canvas.winfo_height())
         for item, points in zip(items, coords, strict=True):
             canvas.coords(item, points)
+        if label is not None and status is not None:
+            canvas.coords(label, canvas.winfo_width() / 2, canvas.winfo_height() - 30)
+            canvas.itemconfigure(label, text=status(t))
         root.after(delay, tick)
 
     def press(_event: object) -> None:

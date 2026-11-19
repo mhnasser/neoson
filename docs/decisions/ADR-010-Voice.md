@@ -81,3 +81,17 @@ sintetizado tem limite próprio de duração (até 30 s), separado do limite de 
 Erros do fornecedor carregam só o tipo, e áudio e texto não vão para logs. A conversão
 é linear e sem filtro: suficiente para fala, não para música. O áudio de cada pedido
 passa pelo fornecedor; usar o modo é decisão de quem opera a instalação.
+
+## Atualização — 2026-11-19: toque, reconexão e recibos
+
+O rosto Tk aceita callbacks opcionais de ação/estado, mantendo seu funcionamento
+standalone. O cliente contínuo só captura por toque quando livre e conectado;
+reconexão repete apenas health, com espera crescente limitada a 30 s. Gestos da
+câmera cancelam a ativação de fala pendente. A interface mostra estados fixos e
+nunca reenvia um turno após falha.
+
+O cliente envia UUID e horário Unix por pedido. Por opt-in, o gateway exige ambos
+e consome um recibo SQLite atômico antes do processamento; repetição retorna 409,
+sem cache de resposta. Recibos sem conteúdo persistem entre processos/reinícios,
+expiram após a janela original e têm teto de volume. A exigência vem desligada
+para compatibilidade. Detalhes e reversão no [runbook](../runbooks/voice.md).

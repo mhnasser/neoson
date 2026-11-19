@@ -11,8 +11,9 @@ substitui unidades existentes. Use a conta que vai executar o NeoSon.
 | `telegram` | `python -m neoson_gateway.telegram_main` | polling contínuo |
 | `graph` | `python -m neoson_worker.graph_main run` | extração contínua, exige configuração do grafo |
 | `robot` | `python -m neoson_robot.voice_main --device pipewire --activate` | uma captura por início manual |
+| `robot-touch` | `python -m neoson_robot.touch_voice` | rosto contínuo, captura somente por toque |
 
-O Robot disponível faz um pedido por ativação: sua unidade é `oneshot`, sem reinício
+O serviço `robot` faz um pedido por ativação: sua unidade é `oneshot`, sem reinício
 automático ou instalação no boot. Não habilite um laço de captura por reinício.
 Rosto e display já têm unidades próprias; o instalador não as altera. Ele também não
 instala Piper ou modelos de voz. Veja [voz do Robot](robot-voice.md).
@@ -42,6 +43,14 @@ Não inclua tokens na URL. Para instalar a partir de um checkout existente, omit
 essa opção. O instalador usa `uv sync --locked --no-dev --inexact --package ...`
 com os pacotes dos serviços escolhidos; apenas `robot` instala o cliente e os
 contratos, sem o motor. Execute a mesma chamada sem `--dry-run` para instalar.
+
+`robot-touch` exige sessão gráfica e Tk, além do PipeWire. Antes de iniciá-lo,
+pare o rosto anterior para evitar duas interfaces lendo os mesmos toques. Execute
+na sessão gráfica `systemctl --user import-environment DISPLAY XAUTHORITY` (somente
+as variáveis presentes), ou configure início pela sessão conforme o
+[runbook do rosto](rosto-do-robo.md). Não habilite esse serviço headless antes de
+validar a sessão. Ele só captura após toque, com gateway disponível; veja
+[toque e reconexão](robot-voice.md#rosto-com-toque-e-reconexão).
 
 Se já existe `.venv`, o instalador exige `--no-sync`: ele reutiliza o ambiente e
 evita modificar um runtime ativo. Confira primeiro se os módulos selecionados

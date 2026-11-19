@@ -5,8 +5,8 @@ import binascii
 import io
 import wave
 from collections.abc import Iterator
-from time import monotonic
-from uuid import UUID
+from time import monotonic, time
+from uuid import UUID, uuid4
 
 import httpx2
 
@@ -72,6 +72,8 @@ class HttpVoiceGateway:
     ) -> Iterator[VoiceEvent]:
         check_audio(audio)
         headers = {"Content-Type": "audio/wav", "X-Neoson-Activation": "explicit"}
+        headers["X-Neoson-Request-Id"] = str(uuid4())
+        headers["X-Neoson-Request-Time"] = str(int(time()))
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         if simulated_capture:

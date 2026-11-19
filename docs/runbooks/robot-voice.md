@@ -29,6 +29,38 @@ tokens, texto ou áudio nesse arquivo.
 
 ## Estados
 
+### Rosto com toque e reconexão
+
+Na sessão gráfica da Pi, com Tk/PipeWire e o ambiente privado do Robot carregado:
+
+```bash
+.venv/bin/python -m neoson_robot.touch_voice --seconds 7
+# Para conferir em uma janela, sem os gestos da câmera:
+.venv/bin/python -m neoson_robot.touch_voice --windowed
+```
+
+O rosto existente recebe um rótulo de estado. Toque curto para falar; aguarde cerca
+de meio segundo após o último toque e o indicador **Ouvindo**, depois fale durante
+a janela de captura. Três toques rápidos abrem a câmera e dois voltam, quando o
+touchscreen é detectado. Esses gestos não iniciam fala. Esc ou toque longo fecha.
+Não execute outra instância do rosto ou do Robot junto: pare a interface anterior
+antes de testar e restaure-a se quiser reverter.
+
+A interface começa offline e só aceita toque após `health/ready` responder pronto.
+Falhas de saúde usam espera de 1, 2, 4, 8, 16 e no máximo 30 segundos; conectada,
+confere a cada 10 segundos. O teste de saúde não chama LLM. Toques offline/ocupado
+são descartados, sem fila. Uma falha durante a fala nunca reenvia o pedido: após
+reconectar, é preciso outro toque explícito. Um erro pode ter ocorrido depois de
+um efeito; confira o canal autenticado antes de repetir uma ação sensível.
+
+Tk só desenha no thread principal; captura/rede/reprodução rodam em segundo plano
+e o rótulo recebe apenas estados/avisos fixos, sem transcrição ou resposta. Ao
+fechar, o cancelamento é sinalizado ao controlador; leitura de rede bloqueada
+pode aguardar o timeout já existente (35 s). Não há wake word nem microfone sempre
+aberto. Instalação opcional: serviço `robot-touch` no
+[runbook de serviços](servicos-continuos.md), somente após preparar a sessão gráfica.
+Os testes usam tela/dispositivos simulados; confirmar voz e gestos no equipamento.
+
 | Estado | Origem |
 |---|---|
 | `idle` | Inicialização, conclusão ou cancelamento |

@@ -10,6 +10,7 @@ from neoson_gateway.composition import (
     build_queries,
     build_voice,
 )
+from neoson_gateway.voice_replay import VoiceReplayGuard
 
 
 def main() -> None:
@@ -37,6 +38,11 @@ def main() -> None:
             actions=build_actions(settings),
             voice=voice,
             queries=build_queries(settings),
+            voice_replay=VoiceReplayGuard(
+                settings.db_path, settings.voice_request_window_seconds
+            )
+            if settings.voice_replay_protection_enabled and voice is not None
+            else None,
         ),
         host=settings.gateway_host,
         port=settings.gateway_port,

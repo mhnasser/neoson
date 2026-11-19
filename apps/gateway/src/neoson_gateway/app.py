@@ -25,6 +25,7 @@ from neoson_gateway import __version__
 from neoson_gateway.actions import HTTP_OWNER, actions_router
 from neoson_gateway.queries import QueryConfig, queries_router
 from neoson_gateway.voice import voice_router
+from neoson_gateway.voice_replay import VoiceReplayGuard
 
 health = APIRouter(prefix="/api/v1/health", tags=["health"])
 
@@ -116,6 +117,7 @@ def create_app(
     actions: ActionService | None = None,
     voice: VoicePipeline | None = None,
     queries: QueryConfig | None = None,
+    voice_replay: VoiceReplayGuard | None = None,
 ) -> FastAPI:
     if not api_token:
         raise ValueError("O gateway exige um token de API.")
@@ -143,7 +145,7 @@ def create_app(
         return JSONResponse(status_code=200 if ok else 503, content=body.model_dump())
 
     if voice is not None:
-        app.include_router(voice_router(voice, require_token(api_token)))
+        app.include_router(voice_router(voice, require_token(api_token), voice_replay))
     if actions is not None:
         app.include_router(actions_router(actions, require_token(api_token)))
 

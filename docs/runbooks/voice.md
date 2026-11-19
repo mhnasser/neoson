@@ -99,9 +99,35 @@ comprimido por Content-Encoding não é aceito. Texto STT/TTS tem limite de 8000
 | 200 / `text_too_long` | Texto disponível, mas acima do limite de síntese |
 
 Sem resultado do motor, uma falha/cancelamento pode ter ocorrido após algum efeito.
-Não há retry automático nem deduplicação de POST neste incremento. Reconcilie pelo
-histórico antes de repetir um pedido incerto. `needs_approval` continua exigindo a
+Não há retry automático. Reconcilie pelo histórico antes de repetir um pedido
+incerto. A proteção opcional abaixo rejeita recebimentos repetidos, sem reutilizar
+respostas. `needs_approval` continua exigindo a
 [revisão autenticada da ação](action-approvals.md); fala reconhecida não concede aprovação.
+
+## Proteção contra repetição
+
+`NEOSON_VOICE_REPLAY_PROTECTION_ENABLED=true` exige, nas rotas JSON e stream:
+
+- `X-Neoson-Request-Id`: UUID por pedido explícito;
+- `X-Neoson-Request-Time`: horário Unix em segundos, próximo ao relógio do servidor.
+
+O cliente atualizado já envia os dois. A janela configurável é
+`NEOSON_VOICE_REQUEST_WINDOW_SECONDS` (padrão 120 s, entre 10 e 600 s), para passado
+e futuro. Mantenha os relógios sincronizados. Header ausente/inválido ou horário
+fora da janela retorna 400; ID já recebido retorna 409, antes de transcrever ou
+executar o motor. A autenticação é verificada antes de consumir o ID.
+
+A migration 19 adiciona recibos no mesmo SQLite: UUID e expiração, sem áudio ou
+texto. O registro é atômico entre processos e permanece após reinício. Expira
+quando o horário original já não pode ser aceito; um ID deve ser sempre novo em
+um novo pedido. Há um teto de 10 mil recibos ativos; saturação retorna 503, sem
+executar o pedido. Recibos expirados são limpos no próximo recebimento válido.
+O ID é consumido antes de processar o corpo, inclusive se a captura ou o
+processamento falhar depois. Nunca reenvie automaticamente um POST incerto.
+
+Faça backup antes de atualizar o servidor para aplicar a migration. A opção vem
+desligada, preservando clientes antigos. Atualize os clientes antes de ligá-la;
+para reverter a exigência de headers, desligue a opção, preservando banco e recibos.
 
 ## Privacidade e validação
 

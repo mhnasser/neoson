@@ -141,6 +141,8 @@ class ServerSettings(BaseSettings):
     voice_tts_voice: str = "marin"
     voice_language: str = Field(default="pt", pattern=r"^[a-z]{2}$")
     voice_max_speech_chars: int = Field(default=400, ge=50, le=2000)
+    voice_replay_protection_enabled: bool = False
+    voice_request_window_seconds: int = Field(default=120, ge=10, le=600)
 
     telegram_bot_token: SecretStr | None = None
     telegram_allowed_users: Annotated[list[int], NoDecode] = Field(default_factory=list)
