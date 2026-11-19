@@ -149,11 +149,49 @@ class Synthesizer(Protocol):
     async def synthesize(self, text: str) -> bytes: ...
 
 
+def speakable(text: str, limit: int) -> str:
+    """Corta a fala num fim de frase ou palavra, sem mudar o texto da resposta."""
+    clean = " ".join(text.split())
+    if len(clean) <= limit:
+        return clean
+    head = clean[:limit]
+    cut = max(head.rfind(ending) for ending in (". ", "! ", "? "))
+    if head[-1] in ".!?" and clean[limit] == " ":
+        cut = limit - 1
+    if cut >= limit // 3:
+        return head[: cut + 1]
+    space = head.rfind(" ")
+    return (head[:space] if space > 0 else head[:-1]).rstrip(",;:") + "…"
+
+
 @dataclass(frozen=True, slots=True)
 class VoiceResult:
     result: RunResult = field(repr=False)
     audio: AudioClip | None = field(default=None, repr=False)
     audio_status: AudioStatus = "ready"
+
+
+@dataclass(frozen=True, slots=True)
+class SpeechUsage:
+    stt_provider: str
+    tts_provider: str
+    stt_seconds: float
+    tts_characters: int
+    complete: bool
+
+    def __post_init__(self) -> None:
+        if (
+            not all(
+                re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", name)
+                for name in (self.stt_provider, self.tts_provider)
+            )
+            or not math.isfinite(self.stt_seconds)
+            or not 0 <= self.stt_seconds <= 30
+            or type(self.tts_characters) is not int
+            or not 0 <= self.tts_characters <= 8000
+            or type(self.complete) is not bool
+        ):
+            raise ValueError("Métricas de voz inválidas.")
 
 
 class VoicePipeline:
@@ -165,6 +203,10 @@ class VoicePipeline:
         limits: VoiceLimits | None = None,
         *,
         simulated: bool = False,
+        max_speech_chars: int = 8000,
+        stt_provider: str = "unknown",
+        tts_provider: str = "unknown",
+        record_usage: Callable[[UUID, SpeechUsage], Awaitable[None]] | None = None,
     ) -> None:
         self.engine, self.transcriber, self.synthesizer = (
             engine,
@@ -172,6 +214,14 @@ class VoicePipeline:
             synthesizer,
         )
         self.limits, self.simulated = limits or VoiceLimits(), simulated
+        if not 1 <= max_speech_chars <= 8000:
+            raise ValueError("Limite de caracteres de fala inválido.")
+        self.max_speech_chars = max_speech_chars
+        self.stt_provider, self.tts_provider, self.record_usage = (
+            stt_provider,
+            tts_provider,
+            record_usage,
+        )
         self._slots = asyncio.Semaphore(self.limits.max_concurrency)
 
     async def process(
@@ -185,6 +235,8 @@ class VoicePipeline:
             raise SpeechUnavailable("voice_busy")
         await self._slots.acquire()
         deadline = monotonic() + self.limits.timeout_seconds
+        result: RunResult | None = None
+        seconds, characters, complete = 0.0, 0, False
         try:
             try:
                 raw = await asyncio.wait_for(
@@ -193,6 +245,7 @@ class VoicePipeline:
             except TimeoutError:
                 raise SpeechUnavailable("voice_upload_timeout") from None
             audio = read_wav(raw, self.limits)
+            seconds = audio.seconds
             if on_activity:
                 on_activity("transcribing")
             try:
@@ -231,18 +284,35 @@ class VoicePipeline:
                 raise SpeechUnavailable("voice_execution_timeout") from None
             except Exception:
                 raise SpeechUnavailable("voice_execution_failed") from None
+            complete = True
             if len(result.text) > self.limits.max_text_chars:
                 return VoiceResult(result, audio_status="text_too_long")
+            speech_text = speakable(for_speech(result.text), self.max_speech_chars)
+            characters, complete = len(speech_text), False
             try:
                 response = await asyncio.wait_for(
-                    self.synthesizer.synthesize(for_speech(result.text)),
+                    self.synthesizer.synthesize(speech_text),
                     timeout=max(deadline - monotonic(), 0),
                 )
                 output = read_wav(response, self.limits, self.limits.max_output_seconds)
+                complete = True
             except TimeoutError:
                 return VoiceResult(result, audio_status="synthesis_timeout")
             except Exception:
                 return VoiceResult(result, audio_status="synthesis_failed")
             return VoiceResult(result, output)
         finally:
-            self._slots.release()
+            try:
+                if result is not None and self.record_usage is not None:
+                    await self.record_usage(
+                        result.run_id,
+                        SpeechUsage(
+                            self.stt_provider,
+                            self.tts_provider,
+                            seconds,
+                            characters,
+                            complete,
+                        ),
+                    )
+            finally:
+                self._slots.release()

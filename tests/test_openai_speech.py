@@ -102,6 +102,13 @@ def test_resampling_keeps_shape_and_odd_tails() -> None:
     assert resample_24k_to_16k(b"") == b""
 
 
+def test_synthesis_can_compensate_duration_before_the_pitch_effect() -> None:
+    recorder = Recorder()
+    asyncio.run(speech(recorder, speed=1 / 1.45).synthesize("Olá."))
+    sent = json.loads(recorder.requests[0].content)
+    assert sent["speed"] == pytest.approx(1 / 1.45)
+
+
 @pytest.mark.parametrize(
     ("text", "limit", "expected"),
     [

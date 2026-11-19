@@ -131,6 +131,78 @@ para reverter a exigência de headers, desligue a opção, preservando banco e r
 
 ## Privacidade e validação
 
+### Piper e efeito da voz
+
+O fornecedor de transcrição continua em `NEOSON_VOICE_PROVIDER`. A síntese usa
+`NEOSON_VOICE_TTS_PROVIDER`: `same` mantém o comportamento anterior, `openai` usa
+a API e `piper` executa o sintetizador local no equipamento do gateway.
+
+Exemplo para transcrição OpenAI e voz local, no arquivo privado do servidor:
+
+```dotenv
+NEOSON_VOICE_PROVIDER=openai
+NEOSON_VOICE_TTS_PROVIDER=piper
+NEOSON_PIPER_MODEL=/srv/neoson-voices/pt_BR-faber-medium.onnx
+NEOSON_PIPER_PYTHON=/opt/neoson-piper/bin/python
+NEOSON_VOICE_EFFECT=squirrel_robot
+NEOSON_VOICE_PITCH_FACTOR=1.45
+```
+
+Reutilize sua instalação do Piper e os modelos já baixados. O modelo precisa do
+arquivo `.onnx.json` ao lado do `.onnx`; a taxa é lida de `audio.sample_rate`.
+`NEOSON_PIPER_PYTHON` aponta para o Python que tem `piper-tts` instalado, inclusive
+se estiver fora do venv do NeoSon. Vazio, usa `piper` do PATH. Não é preciso
+instalar Piper/modelos no workspace ou copiá-los para o Git. No Windows, use
+caminhos locais equivalentes no arquivo privado. Modelos precisam estar no
+equipamento da síntese; o cliente Robot só recebe o WAV final.
+
+`none` preserva a voz sem efeito (padrão). `robot` aplica timbre suave sem mudar
+o tom; `squirrel_robot` aplica também o fator de tom (entre 1 e 2). A receita
+é: length_scale = fator no Piper, ou speed = 1/fator na OpenAI, seguido da
+reamostragem por 1/fator, preservando aproximadamente a duração natural. Depois,
+mistura de 30% com seno de 35 Hz, filtro pente de 6 ms/feedback 0,45 e pico a
+0,9. O wrapper de efeito aceita qualquer Synthesizer PCM16/16 kHz; para compensar
+a duração de outro backend, ele também precisa produzir a fala alongada antes
+do pitch. `fake` continua apenas uma simulação, sem qualidade vocal real.
+
+O subprocesso recebe texto por stdin, nunca em argumentos/arquivos. stdout é PCM
+limitado por duração/taxa, stderr não é exposto, e timeout/cancelamento encerra
+o processo. Não há shell ou fallback automático para outra API. Entrada de
+8–48 kHz é convertida linearmente para WAV PCM16 mono/16 kHz, sem dependência
+de áudio adicional. Conversão/efeito são adequados para fala, não masterização.
+O texto completo da resposta permanece no JSON/histórico; só a fala recebe
+pronúncia e corte de `NEOSON_VOICE_MAX_SPEECH_CHARS`.
+
+### Uso e custo da fala
+
+A migration 20 acrescenta `speech_usage_records`. Faça backup antes de atualizar
+uma instalação existente. Para cada execução persistida pelo motor, grava:
+fornecedores STT/TTS, segundos de entrada transcrita, caracteres submetidos à
+síntese, completude e estimativa de custo. Não grava áudio, resposta ou
+transcrição nessa tabela ou no evento de métricas.
+
+Preços opcionais, configurados para os modelos/fornecedores escolhidos:
+
+- `NEOSON_VOICE_STT_PRICE_PER_MINUTE_USD`: USD por minuto de entrada;
+- `NEOSON_VOICE_TTS_PRICE_PER_MILLION_CHARS_USD`: USD por milhão de caracteres.
+
+Sem preço, o custo fica desconhecido, nunca zero presumido. Para Piper sem
+cobrança de API, o operador pode configurar o preço TTS como `0`; isso não mede
+energia/hardware. As estimativas usam essas unidades, não substituem a fatura
+do fornecedor (inclusive modelos cobrados por tokens). Falha/timeout/cancelamento
+da síntese deixa custo desconhecido, preservando os contadores submetidos.
+Chamadas STT ou falhas antes de o motor retornar uma execução não podem ser
+vinculadas por esse fluxo e não entram no painel; modo echo também não persiste
+execuções. Esse painel não é um medidor completo da conta do fornecedor.
+
+Registro e evento de exportação são atômicos e idempotentes por execução. O
+worker atualiza `Dashboard/Voz-Custos.md`, com agregados por par de fornecedores,
+subtotal conhecido, execuções sem custo e incompletas. Há um link na Home do
+vault. Os custos de fala ficam separados dos custos de tokens de LLM.
+
+Para reverter a seleção de voz, volte TTS para `same` e efeito para `none`, sem
+apagar modelos, banco ou métricas. Não há migração reversa destrutiva.
+
 Áudio não é persistido nem exportado e as respostas usam no-store. A transcrição é uma
 mensagem do usuário no histórico privado, quando o motor tem armazenamento. Não registre
 corpos, transcrições, bytes ou exceções de adaptadores nos logs. Não envie áudio privado

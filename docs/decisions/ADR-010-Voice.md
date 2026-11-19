@@ -95,3 +95,21 @@ e consome um recibo SQLite atômico antes do processamento; repetição retorna 
 sem cache de resposta. Recibos sem conteúdo persistem entre processos/reinícios,
 expiram após a janela original e têm teto de volume. A exigência vem desligada
 para compatibilidade. Detalhes e reversão no [runbook](../runbooks/voice.md).
+
+## Atualização — 2026-11-19: TTS local, efeitos e telemetria
+
+A escolha de TTS passa a ser independente de STT, preservando o padrão anterior.
+Piper roda em subprocesso local com texto por stdin e PCM limitado por stdout,
+prazo e encerramento em cancelamento, sem nova dependência do workspace. A taxa
+vem do JSON do modelo; a saída comum permanece WAV PCM16 mono/16 kHz.
+
+O efeito é um wrapper da porta Synthesizer, sem alterar o texto da conversa.
+O timbre escolhido combina tom mais agudo com duração compensada no backend,
+modulação de 35 Hz e filtro pente suave; vem desativado por padrão. Modelos e
+instalação Piper existentes são reutilizados por configuração.
+
+Métricas por execução persistida são registradas em transação com evento outbox:
+fornecedores, duração STT, caracteres TTS e estimativa com preços opcionais. Sem
+preço ou medição completa, custo desconhecido. A exportação no vault é agregada,
+sem áudio/texto; chamadas anteriores à criação de execução não são contabilizadas
+por esse registro e o painel não substitui a fatura de fornecedores.

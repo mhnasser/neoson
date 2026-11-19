@@ -16,6 +16,7 @@ from neoson_core.infrastructure.config import (
 )
 from neoson_core.infrastructure.db import connect, migrate
 from neoson_core.infrastructure.logs import configure_logging
+from neoson_core.infrastructure.speech_usage import SPEECH_USAGE_EVENT
 from neoson_core.memory import curated, graph_extraction, vault_export
 from neoson_core.skills import curation
 from neoson_core.telemetry import (
@@ -41,11 +42,13 @@ def build_handlers(settings: ServerSettings | None = None) -> dict[str, list[Han
     memory_handlers = []
     skill_handlers = []
     router_handlers = []
+    speech_handlers = []
     if settings is not None and settings.metrics_export_enabled:
         zone = ZoneInfo(settings.timezone)
         exporter = vault.VaultExporter(settings.vault_path, zone)
         handlers.append(Handler(vault.HANDLER_NAME, exporter))
         skill_handlers.append(Handler(vault.HANDLER_NAME, exporter))
+        speech_handlers.append(Handler(vault.HANDLER_NAME, exporter))
         memory_exporter = vault_export.MemoryVaultExporter(settings.vault_path, zone)
         memory_handlers.append(Handler(vault_export.HANDLER_NAME, memory_exporter))
         router_handlers.append(
@@ -58,6 +61,7 @@ def build_handlers(settings: ServerSettings | None = None) -> dict[str, list[Han
         )
     routes = {event_type: list(handlers) for event_type in usage.EVENT_TYPES}
     routes[curated.EVENT_TYPE] = memory_handlers
+    routes[SPEECH_USAGE_EVENT] = speech_handlers
     routes.update({kind: list(router_handlers) for kind in router_metrics.EVENT_TYPES})
     routes.update(
         {event_type: list(skill_handlers) for event_type in skill_metrics.EVENT_TYPES}

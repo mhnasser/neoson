@@ -12,12 +12,12 @@ import openai
 from openai import AsyncOpenAI
 
 from neoson_core.engine.voice import SAMPLE_RATE, AudioClip, pcm_wav
+from neoson_core.engine.voice import speakable as speakable
 
 TTS_SAMPLE_RATE = 24000
 # 30 s de PCM16 a 24 kHz: o Robot não reproduz mais que isso.
 MAX_TTS_BYTES = 30 * TTS_SAMPLE_RATE * 2
 MAX_TRANSCRIPT_CHARS = 8000
-_ENDINGS = (". ", "! ", "? ")
 
 
 class SpeechError(RuntimeError):
@@ -34,12 +34,16 @@ class OpenAISpeech:
         voice: str,
         language: str = "pt",
         max_speech_chars: int = 400,
+        speed: float = 1,
     ) -> None:
         if not 1 <= max_speech_chars <= 4000:
             raise ValueError("max_speech_chars deve estar entre 1 e 4000.")
         self._client = client
         self._stt, self._tts, self._voice = stt_model, tts_model, voice
         self._language, self._max_speech_chars = language, max_speech_chars
+        if not 0.25 <= speed <= 4:
+            raise ValueError("Velocidade de fala inválida.")
+        self._speed = speed
 
     @classmethod
     def from_api_key(
@@ -64,36 +68,25 @@ class OpenAISpeech:
         return text.strip()
 
     async def synthesize(self, text: str) -> bytes:
+        options: dict[str, Any] = {}
+        if self._speed != 1:
+            options["speed"] = self._speed
         try:
             response = await self._client.audio.speech.create(
                 model=self._tts,
                 voice=self._voice,
                 input=speakable(text, self._max_speech_chars),
                 response_format="pcm",
+                **options,
             )
             raw = response.content
         except openai.APIError as error:
             raise SpeechError(f"OpenAI: {type(error).__name__}.") from None
         if not isinstance(raw, bytes) or not raw or len(raw) % 2:
             raise SpeechError("OpenAI: áudio sintetizado inválido.")
-        if len(raw) > MAX_TTS_BYTES:
+        if len(raw) > MAX_TTS_BYTES * max(1, 1 / self._speed):
             raise SpeechError("OpenAI: áudio sintetizado longo demais.")
         return pcm_wav(resample_24k_to_16k(raw))
-
-
-def speakable(text: str, limit: int) -> str:
-    """Texto que cabe na fala: corta no último fim de frase antes do limite."""
-    clean = " ".join(text.split())
-    if len(clean) <= limit:
-        return clean
-    head = clean[:limit]
-    cut = max(head.rfind(ending) for ending in _ENDINGS)
-    if head[-1] in ".!?" and clean[limit] == " ":
-        cut = limit - 1
-    if cut >= limit // 3:
-        return head[: cut + 1]
-    space = head.rfind(" ")
-    return (head[:space] if space > 0 else head).rstrip(",;:") + "…"
 
 
 def resample_24k_to_16k(pcm: bytes) -> bytes:

@@ -140,6 +140,7 @@ def render_home(
         f"{rows}\n\n## Avisos\n\n"
         + ("\n".join(warnings) if warnings else "Nenhum aviso.")
         + "\n\nPainéis: [[Dashboard/LLM-Custos|LLM & Custos]] · "
+        "[[Dashboard/Voz-Custos|Voz & Custos]] · "
         "[[Dashboard/NeoSon-System|NeoSon System]] · "
         "[[Dashboard/Skills-Learning|Skills & Learning]] · "
         "[[Dashboard/Router-Lab|Router Lab]] · "
@@ -161,6 +162,33 @@ def render_costs(usage: Sequence[ModelUsage]) -> str:
         + (rows or "| — | 0 | 0 | 0 | 0 | — |")
         + "\n\nCusto estimado com os preços de `NEOSON_LLM_PRICES`; "
         "sem preço configurado, aparece como —.\n"
+    )
+
+
+def render_speech_costs(connection: sqlite3.Connection) -> str:
+    rows = connection.execute(
+        "SELECT stt_provider, tts_provider, COUNT(*), SUM(stt_seconds),"
+        " SUM(tts_characters), SUM(cost_usd), SUM(cost_usd IS NULL),"
+        " SUM(usage_complete = 0) FROM speech_usage_records"
+        " GROUP BY stt_provider, tts_provider ORDER BY stt_provider, tts_provider"
+    ).fetchall()
+    lines = [
+        f"| {r[0]} | {r[1]} | {r[2]} | {r[3]:.2f} | {r[4]} | "
+        f"{_usd(r[5])} | {r[6]} | {r[7]} |"
+        for r in rows
+    ]
+    return (
+        frontmatter({"tipo": "neoson-dashboard", "painel": "Voz & Custos"})
+        + "\n# Voz & Custos — acumulado\n\n"
+        "| STT | TTS | Execuções | Segundos STT | Caracteres TTS | "
+        "Custo conhecido | Sem preço/custo | Incompletas |\n"
+        "|---|---|---|---|---|---|---|---|\n"
+        + ("\n".join(lines) or "| — | — | 0 | 0 | 0 | — | 0 | 0 |")
+        + "\n\nEstimativas em USD com preços de voz configurados; "
+        "— indica custo desconhecido. Segundos e caracteres refletem entrada "
+        "submetida, não áudio ou texto armazenados. Falha/timeout deixa custo "
+        "desconhecido. Chamadas anteriores à criação de uma execução não entram "
+        "neste painel por execução.\n"
     )
 
 
@@ -420,6 +448,9 @@ class VaultExporter:
             ),
             self._vault / DASHBOARD_DIR / "LLM-Custos.md": render_costs(
                 model_usage(connection, today, self._zone)
+            ),
+            self._vault / DASHBOARD_DIR / "Voz-Custos.md": render_speech_costs(
+                connection
             ),
             self._vault / DASHBOARD_DIR / "NeoSon-System.md": render_system(system),
             self._vault / DASHBOARD_DIR / "Skills-Learning.md": render_skills(

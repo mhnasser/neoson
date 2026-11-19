@@ -143,6 +143,17 @@ class ServerSettings(BaseSettings):
     voice_max_speech_chars: int = Field(default=400, ge=50, le=2000)
     voice_replay_protection_enabled: bool = False
     voice_request_window_seconds: int = Field(default=120, ge=10, le=600)
+    voice_tts_provider: Literal["same", "openai", "piper"] = "same"
+    voice_effect: Literal["none", "robot", "squirrel_robot"] = "none"
+    voice_pitch_factor: float = Field(default=1.45, ge=1, le=2)
+    piper_model: Path | None = None
+    piper_python: Path | None = None
+    voice_stt_price_per_minute_usd: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    voice_tts_price_per_million_chars_usd: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
 
     telegram_bot_token: SecretStr | None = None
     telegram_allowed_users: Annotated[list[int], NoDecode] = Field(default_factory=list)
