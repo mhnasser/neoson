@@ -4,6 +4,7 @@ Com o grafo ligado, acrescenta fatos revisados (ativos) sobre as entidades citad
 consulta, cada um com fonte, data e confiança (D10). Sem o grafo, nada muda.
 """
 
+import json
 import logging
 import re
 from dataclasses import replace
@@ -178,7 +179,9 @@ class MemorySearch(Tool[MemorySearchArguments]):
                 + "\n".join(
                     f"- {hit.title} [ingerido em "
                     f"{hit.ingested_at.astimezone(self._zone):%Y-%m-%d}, "
-                    f"fonte {hit.source_id}]: {hit.snippet}"
+                    # JSON escapa quebras/controles: o documento não forja seções.
+                    f"fonte {hit.source_id}]: "
+                    f"{json.dumps(hit.snippet, ensure_ascii=False)}"
                     for hit in documents
                 )
             )
