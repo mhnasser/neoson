@@ -8,6 +8,7 @@ from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import httpx2
 from fastapi.routing import APIRoute
@@ -267,7 +268,7 @@ def test_robot_screen_shows_the_request_and_approval_runs_once(
 
     # Sem o token certo, a tela não lista nem decide nada.
     stranger = ApprovalPanel(ApprovalClient(journey.http, "outro"))
-    stranger.refresh()
+    stranger.refresh(uuid4())
     assert stranger.view() == (FETCH_FAILED, False)
 
 

@@ -4,6 +4,7 @@ import argparse
 import json
 import threading
 import time
+import unicodedata
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -83,9 +84,24 @@ NOT_DONE = "Não executado: o pedido venceu ou não vale mais."
 
 
 class Approvals(Protocol):
-    def open(self) -> list[ActionResponse]: ...
+    def for_run(self, run_id: UUID) -> list[ActionResponse]: ...
     def decide(self, action_id: UUID, approve: bool) -> ActionResponse: ...
     def resume(self, action_id: UUID) -> ActionResponse: ...
+
+
+def visible(text: str) -> str:
+    """Escapa controles, formatação e separadores Unicode; só `\\n` quebra a linha."""
+    return "".join(
+        ch
+        if ch == "\n" or unicodedata.category(ch)[0] not in "CZ" or ch == " "
+        else f"\\u{ord(ch):04x}"
+        for ch in text
+    )
+
+
+def columns(line: str) -> int:
+    # Largos (CJK, emoji) ocupam duas colunas; na dúvida, estimar a mais é seguro.
+    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in line)
 
 
 def describe(action: ActionResponse) -> tuple[str, bool]:
@@ -100,8 +116,8 @@ def describe(action: ActionResponse) -> tuple[str, bool]:
         if not isinstance(value, str):
             value = json.dumps(value, ensure_ascii=False)
         lines.append(f"{key}: {value}")
-    text = "\n".join(lines)
-    rows = sum(max(1, -(-len(line) // PANEL_COLUMNS)) for line in text.split("\n"))
+    text = visible("\n".join(lines))
+    rows = sum(max(1, -(-columns(line) // PANEL_COLUMNS)) for line in text.split("\n"))
     return (text, True) if rows <= PANEL_ROWS else (TOO_LONG, False)
 
 
@@ -118,20 +134,26 @@ class ApprovalPanel:
         self.client, self.clock = client, clock
         self.start = start or background
         self._lock = threading.Lock()
+        self._run_id: UUID | None = None
         self._action: ActionResponse | None = None
         self._shown_at = 0.0
         self._busy = False
         self._note: tuple[str, float] | None = None
 
-    def _pending(self) -> ActionResponse | None:
-        # A API devolve as mais recentes primeiro; aprovadas sem execução ficam
-        # para o canal autenticado.
-        return next((a for a in self.client.open() if a.state == "pending"), None)
+    def _pending(self, run_id: UUID | None) -> ActionResponse | None:
+        # Só o pedido que acabou de ser falado; aprovadas sem execução ficam para o
+        # canal autenticado.
+        if run_id is None:
+            return None
+        actions = self.client.for_run(run_id)
+        return next((a for a in actions if a.state == "pending"), None)
 
-    def refresh(self) -> None:
-        """Busca a ação pendente; roda na thread do turno, nunca na da tela."""
+    def refresh(self, run_id: UUID) -> None:
+        """Busca a ação pendente do pedido; roda na thread do turno, não na da tela."""
+        with self._lock:
+            self._run_id = run_id
         try:
-            action, note = self._pending(), None
+            action, note = self._pending(run_id), None
         except GatewayError:
             action, note = None, (FETCH_FAILED, self.clock() + NOTE_SECONDS)
         with self._lock:
@@ -155,7 +177,7 @@ class ApprovalPanel:
 
     def choose(self, approve: bool) -> None:
         with self._lock:
-            action = self._action
+            action, run_id = self._action, self._run_id
             if (
                 action is None
                 or self._busy
@@ -165,13 +187,13 @@ class ApprovalPanel:
                 return
             self._busy = True
         try:
-            self.start(lambda: self._send(action, approve))
+            self.start(lambda: self._send(action, run_id, approve))
         except Exception:
             with self._lock:
                 self._busy = False
             raise
 
-    def _send(self, action: ActionResponse, approve: bool) -> None:
+    def _send(self, action: ActionResponse, run_id: UUID | None, approve: bool) -> None:
         try:
             result = self.client.decide(action.id, approve)
             if approve:
@@ -180,7 +202,7 @@ class ApprovalPanel:
         except GatewayError as error:
             note = f"Não consegui concluir: {error}"
         try:
-            following = self._pending()  # outra ação do mesmo pedido, se houver
+            following = self._pending(run_id)  # outra ação do mesmo pedido
         except GatewayError:
             following = None
         with self._lock:
@@ -277,9 +299,11 @@ class ContinuousRobot:
                 if outcome.state == RobotState.OFFLINE:
                     self.online.clear()
                 elif (
-                    outcome.feedback == Feedback.APPROVAL and self.approvals is not None
+                    outcome.feedback == Feedback.APPROVAL
+                    and outcome.response is not None
+                    and self.approvals is not None
                 ):
-                    self.approvals.refresh()
+                    self.approvals.refresh(outcome.response.run_id)
             finally:
                 self._work.release()
 

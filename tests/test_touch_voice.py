@@ -22,6 +22,7 @@ from neoson_robot.touch_voice import (
     ContinuousRobot,
     StatusDisplay,
     TapToTalk,
+    describe,
     gateway_ready,
 )
 from neoson_robot.voice_controller import Feedback, VoiceController
@@ -183,10 +184,13 @@ def test_health_response_is_bounded_and_does_not_send_audio(
         assert gateway_ready(http) == expected
 
 
+RUN = uuid4()
+
+
 def pending_action(**changes: object) -> ActionResponse:
     data: dict[str, object] = {
         "id": uuid4(),
-        "run_id": uuid4(),
+        "run_id": RUN,
         "session_id": uuid4(),
         "tool": "calendar_create",
         "arguments": {"title": "Dentista", "start": "2026-11-20T10:00:00+00:00"},
@@ -205,11 +209,11 @@ class FakeApprovals:
         self.failing = failing
         self.calls: list[object] = []
 
-    def open(self) -> list[ActionResponse]:
-        self.calls.append("open")
+    def for_run(self, run_id: UUID) -> list[ActionResponse]:
+        self.calls.append("for_run")
         if self.failing:
             raise GatewayError("Não foi possível falar com o gateway.", code="offline")
-        return list(self.actions)
+        return [a for a in self.actions if a.run_id == run_id]
 
     def decide(self, action_id: UUID, approve: bool) -> ActionResponse:
         self.calls.append(("decide", approve))
@@ -235,7 +239,7 @@ def test_panel_shows_the_request_and_an_approval_runs_once() -> None:
     client = FakeApprovals(pending_action())
     screen, clock, jobs = panel(client)
     assert screen.view() is None and not screen.active()
-    screen.refresh()
+    screen.refresh(RUN)
     shown = screen.view()
     assert shown is not None and shown[1]
     for part in ("calendar_create", "Destino: sandbox", "title: Dentista", "Vale até"):
@@ -249,7 +253,7 @@ def test_panel_shows_the_request_and_an_approval_runs_once() -> None:
     assert len(jobs) == 1
     assert screen.view() == ("Enviando sua decisão…", False)
     jobs.pop()()
-    assert client.calls == ["open", ("decide", True), "resume", "open"]
+    assert client.calls == ["for_run", ("decide", True), "resume", "for_run"]
     assert screen.view() == ("Pronto, feito.", False)
     screen.choose(True)
     assert not jobs
@@ -261,7 +265,7 @@ def test_deny_never_resumes_and_the_next_request_is_shown() -> None:
     first, second = pending_action(), pending_action(tool="email_draft")
     client = FakeApprovals(first, second)
     screen, clock, jobs = panel(client)
-    screen.refresh()
+    screen.refresh(RUN)
     clock[0] = 2
     screen.choose(False)
     jobs.pop()()
@@ -275,22 +279,47 @@ def test_deny_never_resumes_and_the_next_request_is_shown() -> None:
 def test_long_expired_or_unreachable_requests_get_no_buttons() -> None:
     long = FakeApprovals(pending_action(arguments={"body": "x" * 2000}))
     screen, clock, jobs = panel(long)
-    screen.refresh()
+    screen.refresh(RUN)
     clock[0] = 2
     assert screen.view() == (TOO_LONG, False)
     screen.choose(True)
-    assert not jobs and long.calls == ["open"]
+    assert not jobs and long.calls == ["for_run"]
 
     gone = pending_action(expires_at=datetime.now(UTC) - timedelta(seconds=1))
     screen, _, _ = panel(FakeApprovals(gone))
-    screen.refresh()
+    screen.refresh(RUN)
     assert screen.view() is None
 
     screen, clock, _ = panel(FakeApprovals(failing=True))
-    screen.refresh()
+    screen.refresh(RUN)
     assert screen.view() == (FETCH_FAILED, False)
     clock[0] = 10
     assert screen.view() is None
+
+
+def test_only_the_spoken_request_is_shown() -> None:
+    other = pending_action(run_id=uuid4(), tool="email_draft")
+    screen, clock, jobs = panel(FakeApprovals(other))
+    screen.refresh(RUN)
+    assert screen.view() is None
+    clock[0] = 2
+    screen.choose(True)
+    assert not jobs
+
+
+def test_hidden_characters_are_escaped_and_wide_text_counts_double() -> None:
+    tricky = pending_action(
+        arguments={"title": "a\rb\u2028c\td\u202ee\u00a0f", "body": "linha 1\nlinha 2"}
+    )
+    text, buttons = describe(tricky)
+    assert buttons
+    assert "a\\u000db\\u2028c\\u0009d\\u202ee\\u00a0f" in text
+    assert "body: linha 1\nlinha 2" in text
+    assert describe(pending_action(arguments={"body": "a" * 300}))[1]
+    assert describe(pending_action(arguments={"body": "\u754c" * 300})) == (
+        TOO_LONG,
+        False,
+    )
 
 
 def test_gateway_error_on_decision_becomes_a_note() -> None:
@@ -299,7 +328,7 @@ def test_gateway_error_on_decision_becomes_a_note() -> None:
             raise GatewayError("Ação incompatível com as permissões atuais.")
 
     screen, clock, jobs = panel(Refusing(pending_action()))
-    screen.refresh()
+    screen.refresh(RUN)
     clock[0] = 2
     screen.choose(True)
     jobs.pop()()
@@ -312,7 +341,7 @@ def test_voice_is_blocked_while_the_panel_is_on_screen() -> None:
     screen, clock, _ = panel(FakeApprovals(pending_action()))
     robot.approvals = screen
     robot.check()
-    screen.refresh()
+    screen.refresh(RUN)
     assert not robot.available() and not robot.activate()
     touch = TapToTalk(robot)
     touch.action("feliz", 0)
@@ -329,12 +358,14 @@ def test_buttons_are_large_and_separated(x: int, y: int, expected: bool | None) 
     assert face.choice_at(x, y, 800, 480) is expected
 
 
+@pytest.mark.parametrize("bottom, fits", [(200, True), (400, False)])
 def test_tk_panel_takes_the_positioned_tap_and_blocks_gestures(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, bottom: int, fits: bool
 ) -> None:
     root, canvas = Mock(), Mock()
     canvas.winfo_width.return_value = 800
     canvas.winfo_height.return_value = 480
+    canvas.bbox.return_value = (24, 24, 776, bottom)  # texto desenhado pelo Tk
     callbacks: list[Callable[[], None]] = []
     root.after.side_effect = lambda delay, work: callbacks.append(work)
     action, choice = Mock(), Mock()
@@ -382,6 +413,13 @@ def test_tk_panel_takes_the_positioned_tap_and_blocks_gestures(
         on_choice=choice,
     )
     action.assert_not_called()
-    choice.assert_called_once_with(True)
-    hidden = [c for c in canvas.itemconfigure.call_args_list if "state" in c.kwargs]
-    assert {c.kwargs["state"] for c in hidden} == {"normal"}
+    states = [c.kwargs["state"] for c in canvas.itemconfigure.call_args_list[-4:]]
+    if fits:
+        choice.assert_called_once_with(True)
+        assert states == ["normal"] * 4
+    else:  # texto passou dos botões: sem botões e sem decisão
+        choice.assert_not_called()
+        assert states == ["hidden"] * 4
+        canvas.itemconfigure.assert_any_call(
+            canvas.create_text.return_value, text=face.TOO_TALL
+        )

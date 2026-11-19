@@ -106,7 +106,9 @@ o `run_id`.
 Com o rosto (`neoson_robot.touch_voice`), logo depois desse turno a tela mostra um painel
 por cima do rosto com o que o NeoSon quer fazer: ferramenta, descrição com o destino,
 horário em que o pedido vence e cada argumento. Embaixo ficam **Negar** (esquerda) e
-**Aprovar** (direita).
+**Aprovar** (direita). O painel só mostra ações do pedido que acabou de ser falado
+(`GET /api/v1/runs/{run_id}/actions`, filtrado no servidor); ações de outros pedidos
+ficam para o canal autenticado.
 
 - **Aprovar** decide e executa a chamada salva uma única vez; **Negar** não executa nada.
   A tela mostra o resultado por alguns segundos ("Pronto, feito.", "Negado. Nada foi
@@ -116,8 +118,11 @@ horário em que o pedido vence e cada argumento. Embaixo ficam **Negar** (esquer
   Durante o envio, novos toques são ignorados.
 - Enquanto o painel aparece, nenhum toque vira gesto: não grava nova fala, não abre a
   câmera e não fecha o rosto pelo toque longo.
-- A tela só aprova o que mostra inteiro. Um pedido longo demais (por exemplo, o corpo de
-  um rascunho grande) aparece sem botões e fica para o canal autenticado abaixo.
+- A tela só aprova o que mostra inteiro. Os botões só aparecem e só respondem quando o
+  texto, como o Tk o desenhou, termina acima deles; senão a tela avisa que o pedido não
+  cabe e ele fica para o canal autenticado. Caracteres de controle, de formatação e
+  separadores Unicode aparecem escapados (`\u2028`, `\u202e`...), e só a quebra de
+  linha comum quebra a linha.
 - Pedidos vencidos somem. Ações já aprovadas e ainda não executadas ficam para o canal
   autenticado.
 

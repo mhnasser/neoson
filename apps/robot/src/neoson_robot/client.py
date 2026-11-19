@@ -61,8 +61,10 @@ class ApprovalClient:
         self._http = http
         self._headers = {"Authorization": f"Bearer {token}"} if token else {}
 
-    def open(self) -> list[ActionResponse]:
-        return self._call("GET", ACTIONS_PATH, _ACTIONS.validate_python)
+    def for_run(self, run_id: UUID) -> list[ActionResponse]:
+        """Só as ações do pedido indicado; o servidor filtra por execução e dono."""
+        path = f"/api/v1/runs/{run_id}/actions"
+        return self._call("GET", path, _ACTIONS.validate_python)
 
     def decide(self, action_id: UUID, approve: bool) -> ActionResponse:
         body = ActionDecision(approve=approve).model_dump()

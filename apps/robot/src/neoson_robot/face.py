@@ -49,6 +49,7 @@ LAYERS = (9.0, 4.0, 0.0)
 DEFAULT_COLOR = "#0a50ff"  # azul saturado, no tom da luz de fundo do LCD do peito
 BACKGROUND = "#000000"
 Box = tuple[float, float, float, float]  # x0, y0, x1, y1
+TOO_TALL = "O pedido não cabe nesta tela. Aprove ou negue pelo canal autenticado."
 
 
 @dataclass(frozen=True)
@@ -655,20 +656,31 @@ def run_window(
             root.attributes("-fullscreen", True)
             root.lift()
 
+    # Botões só valem se o texto desenhado terminou acima deles no último quadro.
+    buttons_visible = [False]
+
     def draw_panel(shown: tuple[str, bool] | None) -> None:
         w, h = canvas.winfo_width(), canvas.winfo_height()
         back, text, deny, deny_label, approve, approve_label = panel
+        boxes = prompt_buttons(w, h)
         on = "hidden" if shown is None else "normal"
-        buttons = "normal" if shown is not None and shown[1] else "hidden"
         canvas.coords(back, 0, 0, w, h)
         canvas.itemconfigure(back, state=on)
         canvas.coords(text, w / 2, 24)
         canvas.itemconfigure(
             text, state=on, text=shown[0] if shown else "", width=max(1, w - 48)
         )
+        fits = False
+        if shown is not None and shown[1]:
+            drawn = canvas.bbox(text)
+            fits = drawn is not None and drawn[3] <= boxes[0][1] - 8
+            if not fits:
+                canvas.itemconfigure(text, text=TOO_TALL)
+        buttons_visible[0] = fits
+        buttons = "normal" if fits else "hidden"
         for (box, label), (x0, y0, x1, y1) in zip(
             ((deny, deny_label), (approve, approve_label)),
-            prompt_buttons(w, h),
+            boxes,
             strict=True,
         ):
             canvas.coords(box, x0, y0, x1, y1)
@@ -712,7 +724,7 @@ def run_window(
     def release(event: Any) -> None:
         shown = prompt() if prompt is not None else None
         if shown is not None:
-            if shown[1] and on_choice is not None:
+            if shown[1] and buttons_visible[0] and on_choice is not None:
                 choice = choice_at(
                     event.x, event.y, canvas.winfo_width(), canvas.winfo_height()
                 )
