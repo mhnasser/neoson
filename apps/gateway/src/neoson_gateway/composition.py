@@ -34,6 +34,7 @@ from neoson_core.infrastructure.actions import SqliteActionStore
 from neoson_core.infrastructure.config import ConfigError, ServerSettings
 from neoson_core.infrastructure.speech_usage import SqliteSpeechUsage
 from neoson_core.memory.curated import SqliteCuratedMemory
+from neoson_core.memory.document_search import SqliteDocumentSearch
 from neoson_core.memory.graph_backend import graph_store
 from neoson_core.memory.search import SqliteHistorySearch
 from neoson_core.memory.session_store import SqliteConversationStore
@@ -311,6 +312,7 @@ def build_tools(
             ZoneInfo(settings.timezone),
             # Só fatos revisados; desligado, a ferramenta fica como antes.
             graph_store(settings) if settings.memory_graph_enabled else None,
+            documents=SqliteDocumentSearch(settings.db_path),
         ),
         MemorySave(memory),
         MemoryForget(memory),

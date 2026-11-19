@@ -10,6 +10,20 @@ from neoson_core.engine.messages import Role
 
 
 @dataclass(frozen=True, slots=True)
+class DocumentHit:
+    source_id: str
+    title: str
+    ingested_at: datetime
+    snippet: str
+
+
+class DocumentSearch(Protocol):
+    def has_documents(self) -> bool: ...
+
+    async def search(self, query: str, limit: int) -> Sequence[DocumentHit]: ...
+
+
+@dataclass(frozen=True, slots=True)
 class HistoryHit:
     """Trecho de uma mensagem antiga, com a origem para citar."""
 

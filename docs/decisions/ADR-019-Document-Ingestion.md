@@ -14,6 +14,25 @@ Dataview executa como JavaScript.
 
 ## Decisão
 
+### Busca dos trechos
+
+A migration 21 cria índice FTS5 dos trechos ativos e preenche documentos já
+ingeridos. Triggers acompanham inserção/edição/exclusão e mudança de status;
+documentos esquecidos saem do índice. A consulta também exige status ativo.
+
+`memory_search` acrescenta uma seção de dados com título, data de ingestão e fonte
+`document:<sha256>:<n>`, compatível com as fontes do grafo. A descrição menciona
+documentos apenas enquanto houver documentos ativos; sem documentos, mantém
+descrição e resultado anteriores. O parâmetro limit também limita os trechos de
+documentos (até 10), com snippet de até 512 caracteres. Termos são escapados como
+na busca do histórico; operadores recebidos não viram sintaxe FTS/SQL. O conteúdo
+continua sendo dado não confiável, nunca instrução ou autorização.
+
+Faça backup antes de atualizar uma instalação existente; a migration indexa os
+trechos já presentes no banco, sem reler arquivos externos ou chamar modelos.
+Esquecer documentos continua pela CLI de ingestão. Não há mudança em formatos,
+extração de PDFs/imagens ou uso de APIs neste incremento.
+
 `neoson-docs ingest <arquivo>` é a única porta de entrada: local e explícita.
 
 - **Formatos.** Só `.md`, `.markdown` e `.txt`, em UTF-8 (com ou sem BOM), sem bytes
