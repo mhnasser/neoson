@@ -22,7 +22,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 DESIGN_W, DESIGN_H = 800.0, 480.0  # coordenadas de projeto, escaladas para a tela
 TRANSITION = 0.5  # s para trocar de expressão
@@ -48,6 +48,7 @@ CORNER_STEPS = 8
 LAYERS = (9.0, 4.0, 0.0)
 DEFAULT_COLOR = "#0a50ff"  # azul saturado, no tom da luz de fundo do LCD do peito
 BACKGROUND = "#000000"
+Box = tuple[float, float, float, float]  # x0, y0, x1, y1
 
 
 @dataclass(frozen=True)
@@ -381,6 +382,27 @@ class Gestures:
         self.camera = False
         self._taps = []
 
+    def reset(self) -> None:
+        """Esquece toques em curso (ex.: enquanto um painel de aprovação aparece)."""
+        self._pressed_at = None
+        self._taps = []
+
+
+def prompt_buttons(width: float, height: float) -> tuple[Box, Box]:
+    """Negar à esquerda e Aprovar à direita, no rodapé, grandes para o dedo."""
+    margin, w, h = width * 0.05, width * 0.38, max(64.0, height * 0.18)
+    y0, y1 = height - margin - h, height - margin
+    return (margin, y0, margin + w, y1), (width - margin - w, y0, width - margin, y1)
+
+
+def choice_at(x: float, y: float, width: float, height: float) -> bool | None:
+    """True = Aprovar, False = Negar, None = fora dos botões."""
+    deny, approve = prompt_buttons(width, height)
+    for (x0, y0, x1, y1), choice in ((approve, True), (deny, False)):
+        if x0 <= x <= x1 and y0 <= y <= y1:
+            return choice
+    return None
+
 
 def touch_changes(data: bytes) -> list[bool]:
     """Pressões (True) e solturas (False) do toque em eventos crus do evdev."""
@@ -512,12 +534,16 @@ def run_window(
     camera: CameraView | None = None,
     on_action: Callable[[str, float], None] | None = None,
     status: Callable[[float], str] | None = None,
+    prompt: Callable[[], tuple[str, bool] | None] | None = None,
+    on_choice: Callable[[bool], None] | None = None,
 ) -> None:
     """Desenha o rosto em Tk até Esc, toque longo ou `seconds` (0 = sem fim).
 
     Com `touch` (o `/dev/input/eventN` da tela), os toques são lidos direto do
     dispositivo, inclusive quando a câmera está na frente do rosto; sem ele, vêm
-    do Tk, e os gestos da câmera ficam desligados.
+    do Tk, e os gestos da câmera ficam desligados. Quando `prompt` devolve
+    (texto, botões), um painel cobre o rosto; com botões, o toque do Tk (que traz a
+    posição) chama `on_choice`, e nenhum toque vira gesto enquanto o painel aparece.
     """
     import tkinter
 
@@ -548,6 +574,31 @@ def run_window(
         for color in colors:
             items.append(canvas.create_polygon(*flat, fill=color, outline=""))
         items.append(canvas.create_oval(0, 0, 0, 0, fill=BACKGROUND, outline=""))
+    panel: list[int] = []
+    if prompt is not None:
+        # Criados por último: ficam por cima do rosto e do status.
+        panel.append(
+            canvas.create_rectangle(0, 0, 0, 0, fill=BACKGROUND, state="hidden")
+        )
+        panel.append(
+            canvas.create_text(
+                0, 0, fill="white", font=("sans", 16), anchor="n", state="hidden"
+            )
+        )
+        for color, text in (("#8b1e1e", "Negar"), ("#1e6b34", "Aprovar")):
+            panel.append(
+                canvas.create_rectangle(0, 0, 0, 0, fill=color, state="hidden")
+            )
+            panel.append(
+                canvas.create_text(
+                    0,
+                    0,
+                    text=text,
+                    fill="white",
+                    font=("sans", 26, "bold"),
+                    state="hidden",
+                )
+            )
 
     start = time.monotonic()
     delay = max(1, round(1000 / fps))
@@ -604,10 +655,36 @@ def run_window(
             root.attributes("-fullscreen", True)
             root.lift()
 
+    def draw_panel(shown: tuple[str, bool] | None) -> None:
+        w, h = canvas.winfo_width(), canvas.winfo_height()
+        back, text, deny, deny_label, approve, approve_label = panel
+        on = "hidden" if shown is None else "normal"
+        buttons = "normal" if shown is not None and shown[1] else "hidden"
+        canvas.coords(back, 0, 0, w, h)
+        canvas.itemconfigure(back, state=on)
+        canvas.coords(text, w / 2, 24)
+        canvas.itemconfigure(
+            text, state=on, text=shown[0] if shown else "", width=max(1, w - 48)
+        )
+        for (box, label), (x0, y0, x1, y1) in zip(
+            ((deny, deny_label), (approve, approve_label)),
+            prompt_buttons(w, h),
+            strict=True,
+        ):
+            canvas.coords(box, x0, y0, x1, y1)
+            canvas.coords(label, (x0 + x1) / 2, (y0 + y1) / 2)
+            canvas.itemconfigure(box, state=buttons)
+            canvas.itemconfigure(label, state=buttons)
+
     def tick() -> None:
         t = now()
+        shown = prompt() if prompt is not None else None
+        if shown is not None:
+            gestures.reset()
         while not touches.empty():
             at, down = touches.get_nowait()
+            if shown is not None:
+                continue  # o painel usa o toque com posição, vindo do Tk
             if down:
                 gestures.press(at)
             else:
@@ -624,13 +701,24 @@ def run_window(
         if label is not None and status is not None:
             canvas.coords(label, canvas.winfo_width() / 2, canvas.winfo_height() - 30)
             canvas.itemconfigure(label, text=status(t))
+        if panel:
+            draw_panel(shown)
         root.after(delay, tick)
 
     def press(_event: object) -> None:
-        if touch is None:
+        if touch is None and (prompt is None or prompt() is None):
             gestures.press(now())
 
-    def release(_event: object) -> None:
+    def release(event: Any) -> None:
+        shown = prompt() if prompt is not None else None
+        if shown is not None:
+            if shown[1] and on_choice is not None:
+                choice = choice_at(
+                    event.x, event.y, canvas.winfo_width(), canvas.winfo_height()
+                )
+                if choice is not None:
+                    on_choice(choice)
+            return
         if touch is None:
             handle(gestures.release(now()), now())
 

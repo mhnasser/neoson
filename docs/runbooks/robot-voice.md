@@ -98,8 +98,38 @@ Execução interrompida pode ter efeito incerto; não repetir automaticamente.
 
 Quando a fala leva a uma ação sensível (`calendar_create`, `email_draft`), o gateway
 suspende a execução e o Robot mostra `approval_required`. O áudio do pedido de aprovação
-é reproduzido, mas o Robot não decide nada e não mostra argumentos nem o `run_id`. A
-decisão acontece no canal autenticado do [runbook de aprovações](action-approvals.md):
+é reproduzido. O status, o terminal e o arquivo de estado continuam sem argumentos e sem
+o `run_id`.
+
+### Aprovar na tela touch
+
+Com o rosto (`neoson_robot.touch_voice`), logo depois desse turno a tela mostra um painel
+por cima do rosto com o que o NeoSon quer fazer: ferramenta, descrição com o destino,
+horário em que o pedido vence e cada argumento. Embaixo ficam **Negar** (esquerda) e
+**Aprovar** (direita).
+
+- **Aprovar** decide e executa a chamada salva uma única vez; **Negar** não executa nada.
+  A tela mostra o resultado por alguns segundos ("Pronto, feito.", "Negado. Nada foi
+  feito." ou o motivo da recusa) e, se o mesmo pedido tiver outra ação pendente, mostra a
+  próxima.
+- Toques no primeiro segundo do painel não decidem nada, para evitar aprovação acidental.
+  Durante o envio, novos toques são ignorados.
+- Enquanto o painel aparece, nenhum toque vira gesto: não grava nova fala, não abre a
+  câmera e não fecha o rosto pelo toque longo.
+- A tela só aprova o que mostra inteiro. Um pedido longo demais (por exemplo, o corpo de
+  um rascunho grande) aparece sem botões e fica para o canal autenticado abaixo.
+- Pedidos vencidos somem. Ações já aprovadas e ainda não executadas ficam para o canal
+  autenticado.
+
+O painel usa a mesma API e o mesmo token (`NEOSON_API_TOKEN`) que o Robot já usa para a
+voz, então não há permissão nova no servidor. Quem tocar na tela pode aprovar, e quem
+estiver perto vê os argumentos: deixe o Robot onde só você tem acesso. Os toques com
+posição chegam pela sessão gráfica (Tk); a validação na tela real ainda está pendente.
+
+### Canal autenticado
+
+Fora da tela, a decisão acontece pelo canal autenticado do
+[runbook de aprovações](action-approvals.md):
 
 1. `GET /api/v1/actions` lista as ações abertas do proprietário, as mais recentes
    primeiro, com ferramenta, argumentos completos e destino.
@@ -121,7 +151,9 @@ validada pelo teste isolado abaixo, não pela composição do servidor.
 jornada voz → análise delegada → aprovação → efeito no sandbox → nova fala na mesma
 sessão, com Robot, cliente HTTP, gateway, motor, SQLite e sandbox reais, e fala,
 dispositivos e modelo simulados. Também cobre negação sem efeito e cancelamento pelo
-stream durante a análise delegada.
+stream durante a análise delegada. O caso da tela touch percorre a mesma jornada até o
+painel: fala, painel com os argumentos, Aprovar com um único efeito, toque repetido sem
+segundo efeito e recusa com token errado.
 
 `uv run --no-sync python -m pytest -q tests/test_robot_voice.py` cobre ativação, estados,
 privacidade, cancelamento, desconexão, parsing limitado, limpeza, estado atômico e

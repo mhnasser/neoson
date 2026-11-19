@@ -38,8 +38,15 @@ from neoson_core.tools.personal_write import CalendarCreate, EmailDraft
 from neoson_core.tools.registry import ToolRegistry
 from neoson_gateway.app import create_app
 from neoson_gateway.voice import voice_router
+from neoson_robot.client import ApprovalClient
 from neoson_robot.fake_devices import FakeCapture, FakeDisplay, FakePlayback, silent_wav
 from neoson_robot.session_state import FileSessionState
+from neoson_robot.touch_voice import (
+    FETCH_FAILED,
+    ApprovalPanel,
+    ContinuousRobot,
+    StatusDisplay,
+)
 from neoson_robot.voice_client import HttpVoiceGateway
 from neoson_robot.voice_controller import Feedback, Outcome, VoiceController
 
@@ -100,7 +107,8 @@ class Journey:
         self.state = FileSessionState(tmp_path / "robot-session.json", URL)
 
     def _bridge(self, request: httpx2.Request) -> httpx2.Response:
-        answer = self.server.post(
+        answer = self.server.request(
+            request.method,
             request.url.path,
             content=request.content,
             headers=dict(request.headers),
@@ -209,6 +217,58 @@ def test_voice_request_needs_approval_then_executes_once_and_session_continues(
     runs = [p for p in payloads if "delegation" in p]
     assert runs[0]["delegation"]["completed"] == 1 and runs[0]["usage_complete"]
     assert proposal.messages[-1].content.startswith("Resultado de análise delegada")
+
+
+def test_robot_screen_shows_the_request_and_approval_runs_once(
+    tmp_path: Path,
+) -> None:
+    provider = ScriptedProvider([call_tool("calendar_create", EVENT, "c1")])
+    journey = Journey(tmp_path, provider)
+    display = StatusDisplay()
+    controller = VoiceController(
+        FakeCapture(),
+        FakePlayback(),
+        display,
+        HttpVoiceGateway(journey.http, TOKEN),
+        journey.state,
+    )
+    clock = [0.0]
+    screen = ApprovalPanel(
+        ApprovalClient(journey.http, TOKEN),
+        start=lambda work: work(),
+        clock=lambda: clock[0],
+    )
+    robot = ContinuousRobot(
+        controller, display, lambda: True, start=lambda work: work(), approvals=screen
+    )
+    robot.check()
+
+    # Fala → ação suspensa → a tela mostra o que o NeoSon quer fazer.
+    assert robot.activate()
+    shown = screen.view()
+    assert shown is not None and shown[1]
+    for part in ("calendar_create", "sandbox local simulado", TITLE):
+        assert part in shown[0]
+    assert not robot.activate()  # com o painel na tela, tocar não grava outra fala
+    assert journey.effects() == 0
+
+    # Aprovar: decide e retoma pela API autenticada, um único efeito.
+    clock[0] = 2
+    screen.choose(True)
+    assert screen.view() == ("Pronto, feito.", False)
+    assert journey.effects() == 1
+    screen.choose(True)
+    assert journey.effects() == 1
+    assert journey.review("GET", "/actions").json() == []
+
+    # O conteúdo fica só no painel: status e estado local continuam sem ele.
+    assert TITLE not in display.text()
+    assert TITLE not in (tmp_path / "robot-session.json").read_text(encoding="utf-8")
+
+    # Sem o token certo, a tela não lista nem decide nada.
+    stranger = ApprovalPanel(ApprovalClient(journey.http, "outro"))
+    stranger.refresh()
+    assert stranger.view() == (FETCH_FAILED, False)
 
 
 def test_denied_voice_action_never_reaches_the_sandbox(tmp_path: Path) -> None:

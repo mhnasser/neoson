@@ -47,6 +47,8 @@ de contexto/permissões. HTTP 422 indica requisição inválida. Uma ação expi
 não pode ser liberada por outra decisão.
 
 O proprietário vem da autenticação do servidor; o cliente não pode informar principal.
+O painel da tela touch do Robot usa estas mesmas rotas com o token que o Robot já tem
+(veja [voz no Robot](robot-voice.md#aprovar-na-tela-touch)).
 Esta instalação não oferece isolamento multiusuário nem consentimento pelo Telegram.
 Canais sem principal confiável continuam suspendendo de forma segura, sem uma ação
 retomável. Aprovar um caso novo não autoriza outros pedidos, outras sessões ou chamadas

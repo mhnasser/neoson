@@ -3,12 +3,18 @@
 import argparse
 import json
 import threading
+import time
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
+from uuid import UUID
 
 import httpx2
 
+from neoson_contracts.api.v1.actions import ActionResponse
 from neoson_contracts.events.v1.robot import RobotState
+from neoson_robot.client import ApprovalClient, GatewayError
 from neoson_robot.config import api_token, gateway_url
 from neoson_robot.face import (
     MULTI_TAP,
@@ -56,6 +62,133 @@ def background(work: Callable[[], None]) -> None:
     threading.Thread(target=work, daemon=True).start()
 
 
+# Linhas que cabem acima dos botões na tela de 7" (fonte 16); maior que isso não
+# ganha botões: a tela só aprova o que mostra inteiro.
+PANEL_ROWS, PANEL_COLUMNS = 11, 60
+TAP_GUARD_SECONDS = 1.0  # toque logo que o painel aparece não decide nada
+NOTE_SECONDS = 5.0
+TOO_LONG = (
+    "O pedido é longo demais para revisar nesta tela. "
+    "Aprove ou negue pelo canal autenticado."
+)
+FETCH_FAILED = "Não consegui buscar o pedido de aprovação."
+UNSURE = "Não sei se concluiu. Confira no destino antes de pedir de novo."
+RESULTS = {
+    "completed": "Pronto, feito.",
+    "denied": "Negado. Nada foi feito.",
+    "unknown": UNSURE,
+    "executing": UNSURE,
+}
+NOT_DONE = "Não executado: o pedido venceu ou não vale mais."
+
+
+class Approvals(Protocol):
+    def open(self) -> list[ActionResponse]: ...
+    def decide(self, action_id: UUID, approve: bool) -> ActionResponse: ...
+    def resume(self, action_id: UUID) -> ActionResponse: ...
+
+
+def describe(action: ActionResponse) -> tuple[str, bool]:
+    """Texto do painel e se ele cabe inteiro na tela (só então há botões)."""
+    lines = [
+        "O NeoSon pede sua aprovação para:",
+        f"{action.tool}: {action.tool_description or 'sem descrição disponível'}",
+        f"Vale até {action.expires_at.astimezone():%H:%M}.",
+        "",
+    ]
+    for key, value in action.arguments.items():
+        if not isinstance(value, str):
+            value = json.dumps(value, ensure_ascii=False)
+        lines.append(f"{key}: {value}")
+    text = "\n".join(lines)
+    rows = sum(max(1, -(-len(line) // PANEL_COLUMNS)) for line in text.split("\n"))
+    return (text, True) if rows <= PANEL_ROWS else (TOO_LONG, False)
+
+
+class ApprovalPanel:
+    """Ação pendente na tela; decide e retoma pela API, uma vez por toque válido."""
+
+    def __init__(
+        self,
+        client: Approvals,
+        *,
+        start: Callable[[Callable[[], None]], None] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.client, self.clock = client, clock
+        self.start = start or background
+        self._lock = threading.Lock()
+        self._action: ActionResponse | None = None
+        self._shown_at = 0.0
+        self._busy = False
+        self._note: tuple[str, float] | None = None
+
+    def _pending(self) -> ActionResponse | None:
+        # A API devolve as mais recentes primeiro; aprovadas sem execução ficam
+        # para o canal autenticado.
+        return next((a for a in self.client.open() if a.state == "pending"), None)
+
+    def refresh(self) -> None:
+        """Busca a ação pendente; roda na thread do turno, nunca na da tela."""
+        try:
+            action, note = self._pending(), None
+        except GatewayError:
+            action, note = None, (FETCH_FAILED, self.clock() + NOTE_SECONDS)
+        with self._lock:
+            self._action, self._shown_at, self._note = action, self.clock(), note
+
+    def view(self) -> tuple[str, bool] | None:
+        with self._lock:
+            if self._busy:
+                return "Enviando sua decisão…", False
+            action = self._action
+            if action is not None and action.expires_at <= datetime.now(UTC):
+                action = self._action = None
+            if action is not None:
+                return describe(action)
+            if self._note is not None and self.clock() < self._note[1]:
+                return self._note[0], False
+            return None
+
+    def active(self) -> bool:
+        return self.view() is not None
+
+    def choose(self, approve: bool) -> None:
+        with self._lock:
+            action = self._action
+            if (
+                action is None
+                or self._busy
+                or self.clock() - self._shown_at < TAP_GUARD_SECONDS
+                or not describe(action)[1]
+            ):
+                return
+            self._busy = True
+        try:
+            self.start(lambda: self._send(action, approve))
+        except Exception:
+            with self._lock:
+                self._busy = False
+            raise
+
+    def _send(self, action: ActionResponse, approve: bool) -> None:
+        try:
+            result = self.client.decide(action.id, approve)
+            if approve:
+                result = self.client.resume(action.id)
+            note = RESULTS.get(result.state, NOT_DONE)
+        except GatewayError as error:
+            note = f"Não consegui concluir: {error}"
+        try:
+            following = self._pending()  # outra ação do mesmo pedido, se houver
+        except GatewayError:
+            following = None
+        with self._lock:
+            self._busy = False
+            self._action, self._shown_at = following, self.clock()
+            self._note = (note, self.clock() + NOTE_SECONDS)
+
+
 def gateway_ready(http: httpx2.Client) -> bool:
     with http.stream("GET", "/api/v1/health/ready", timeout=3) as response:
         if response.status_code != 200:
@@ -77,6 +210,7 @@ class ContinuousRobot:
         ready: Callable[[], bool],
         *,
         start: Callable[[Callable[[], None]], None] = background,
+        approvals: ApprovalPanel | None = None,
     ) -> None:
         self.controller, self.display, self.ready, self.start = (
             controller,
@@ -84,6 +218,7 @@ class ContinuousRobot:
             ready,
             start,
         )
+        self.approvals = approvals
         self.stop = threading.Event()
         self.online = threading.Event()
         self._work = threading.Lock()
@@ -116,15 +251,22 @@ class ContinuousRobot:
         while not self.stop.is_set():
             self.stop.wait(self.check())
 
+    def _reviewing(self) -> bool:
+        return self.approvals is not None and self.approvals.active()
+
     def available(self) -> bool:
         return (
-            self.online.is_set() and not self.stop.is_set() and not self._work.locked()
+            self.online.is_set()
+            and not self.stop.is_set()
+            and not self._work.locked()
+            and not self._reviewing()
         )
 
     def activate(self) -> bool:
         if (
             self.stop.is_set()
             or not self.online.is_set()
+            or self._reviewing()
             or not self._work.acquire(blocking=False)
         ):
             return False
@@ -134,6 +276,10 @@ class ContinuousRobot:
                 outcome = self.controller.interact(True, self.stop.is_set)
                 if outcome.state == RobotState.OFFLINE:
                     self.online.clear()
+                elif (
+                    outcome.feedback == Feedback.APPROVAL and self.approvals is not None
+                ):
+                    self.approvals.refresh()
             finally:
                 self._work.release()
 
@@ -178,19 +324,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         url = gateway_url(args.gateway_url)
         capture = PipeWireCapture(args.seconds)
         display = StatusDisplay()
+        token = api_token()
         with httpx2.Client(base_url=url, timeout=35, follow_redirects=False) as http:
             controller = VoiceController(
                 capture,
                 PipeWirePlayback(),
                 display,
-                HttpVoiceGateway(http, api_token()),
+                HttpVoiceGateway(http, token),
                 FileSessionState(args.state_file, url),
             )
 
             def ready() -> bool:
                 return gateway_ready(http)
 
-            runtime = ContinuousRobot(controller, display, ready)
+            approvals = ApprovalPanel(ApprovalClient(http, token))
+            runtime = ContinuousRobot(controller, display, ready, approvals=approvals)
             gestures = TapToTalk(runtime)
             background(runtime.monitor)
             touch = None if args.windowed else find_touchscreen()
@@ -204,6 +352,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     camera=CameraView() if touch else None,
                     on_action=gestures.action,
                     status=gestures.status,
+                    prompt=approvals.view,
+                    on_choice=approvals.choose,
                 )
             finally:
                 runtime.stop.set()

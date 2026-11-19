@@ -1,11 +1,18 @@
+from collections.abc import Callable
+from typing import TypeVar
 from uuid import UUID
 
 import httpx2
+from pydantic import TypeAdapter
 
+from neoson_contracts.api.v1.actions import ActionDecision, ActionResponse
 from neoson_contracts.api.v1.errors import ErrorResponse
 from neoson_contracts.api.v1.messages import MessageRequest, MessageResponse
 
 MESSAGES_PATH = "/api/v1/messages"
+ACTIONS_PATH = "/api/v1/actions"
+_ACTIONS = TypeAdapter(list[ActionResponse])
+T = TypeVar("T")
 
 
 class GatewayError(Exception):
@@ -45,6 +52,44 @@ class GatewayClient:
             except ValueError:  # corpo não é JSON ou não segue o MessageResponse
                 raise _unexpected(response) from None
         raise _error_from(response)
+
+
+class ApprovalClient:
+    """Revisão de ações pela mesma API autenticada do canal HTTP."""
+
+    def __init__(self, http: httpx2.Client, token: str | None = None) -> None:
+        self._http = http
+        self._headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    def open(self) -> list[ActionResponse]:
+        return self._call("GET", ACTIONS_PATH, _ACTIONS.validate_python)
+
+    def decide(self, action_id: UUID, approve: bool) -> ActionResponse:
+        body = ActionDecision(approve=approve).model_dump()
+        path = f"{ACTIONS_PATH}/{action_id}/decision"
+        return self._call("POST", path, ActionResponse.model_validate, body)
+
+    def resume(self, action_id: UUID) -> ActionResponse:
+        path = f"{ACTIONS_PATH}/{action_id}/resume"
+        return self._call("POST", path, ActionResponse.model_validate)
+
+    def _call(
+        self, method: str, path: str, parse: Callable[[object], T], body: object = None
+    ) -> T:
+        try:
+            response = self._http.request(
+                method, path, json=body, headers=self._headers, timeout=15
+            )
+        except httpx2.HTTPError:
+            raise GatewayError(
+                "Não foi possível falar com o gateway.", code="offline"
+            ) from None
+        if not response.is_success:
+            raise _error_from(response)
+        try:
+            return parse(response.json())
+        except ValueError:  # corpo não é JSON ou não segue o ActionResponse
+            raise _unexpected(response) from None
 
 
 def _error_from(response: httpx2.Response) -> GatewayError:
