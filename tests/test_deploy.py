@@ -13,9 +13,11 @@ def test_units_use_existing_modules_without_shell_or_automatic_capture(
     service: str,
 ) -> None:
     unit = install.unit_text(
-        service, Path("/srv/Neo Son%$HOME"), Path("/srv/private.env")
+        service, Path("/srv/Neo Son%$HOME"), Path("/srv/private env%.env")
     )
     assert "WorkingDirectory=/srv/Neo Son%%$HOME\n" in unit
+    # O systemd ignora EnvironmentFile entre aspas ("path is not absolute").
+    assert "EnvironmentFile=/srv/private env%%.env\n" in unit
     assert 'ExecStart=:"/srv/Neo Son%%$HOME/.venv/bin/python" -m ' in unit
     assert "UMask=0077" in unit
     if service == "robot":
@@ -63,6 +65,14 @@ def test_dry_run_clones_and_syncs_selected_packages_without_side_effects(
 def test_unit_rejects_directive_injection(path: str) -> None:
     with pytest.raises(ValueError):
         install.quoted(path)
+
+
+@pytest.mark.parametrize(
+    "path", ['/srv/a"b.env', "/srv/*.env", "/srv/a?.env", "/srv/[ab].env", "/srv/a\nb"]
+)
+def test_environment_file_rejects_quotes_and_wildcards(path: str) -> None:
+    with pytest.raises(ValueError):
+        install.unit_text("gateway", Path("/srv/neoson"), Path(path))
 
 
 def test_repository_credentials_are_never_printed(

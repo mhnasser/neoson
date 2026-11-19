@@ -32,6 +32,14 @@ def quoted(value: str) -> str:
     return '"' + value.replace("%", "%%").replace('"', '\\"') + '"'
 
 
+def plain(value: str) -> str:
+    """Caminho para EnvironmentFile: o systemd não remove aspas e expande *?[."""
+    quoted(value)  # mesmas recusas de controles, barra invertida e espaços nas pontas
+    if any(char in value for char in '"*?['):
+        raise ValueError("Caminho contém caracteres não suportados pelo instalador.")
+    return value.replace("%", "%%")
+
+
 def unit_text(service: str, checkout: Path, environment: Path) -> str:
     command = SERVICES[service]
     executable = (checkout / ".venv/bin/python").as_posix()
@@ -46,7 +54,7 @@ def unit_text(service: str, checkout: Path, environment: Path) -> str:
         "\n[Service]\n"
         + restart
         + f"WorkingDirectory={checkout.as_posix().replace('%', '%%')}\n"
-        + f"EnvironmentFile={quoted(environment.as_posix())}\n"
+        + f"EnvironmentFile={plain(environment.as_posix())}\n"
         + "Environment=PYTHONUNBUFFERED=1\n"
         + "UMask=0077\nNoNewPrivileges=true\nTimeoutStopSec=30\n"
         + f"ExecStart={start}\n"
