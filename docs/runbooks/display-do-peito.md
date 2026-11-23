@@ -18,6 +18,23 @@ RAM   6% 0.5G/8G
 O programa é o módulo `neoson_robot.chest_display` e usa só a biblioteca padrão. Ele escreve
 direto no `/dev/i2c-N`, então roda tanto pelo pacote quanto copiado sozinho para a Pi.
 
+## Estado do robô
+
+Quando o Robot acorda com "Ei NeoSon", o peito troca o uso pelo estado:
+
+```
+NeoSon
+Escutando...
+```
+
+Depois vêm `Pensando...`, `Consultando...` e `Falando...`; no fim, o uso volta na hora.
+O Robot grava o estado em `$XDG_RUNTIME_DIR/neoson-robot-status` (texto e validade) e o
+`neoson-chest` confere o arquivo a cada 250 ms, medindo a CPU/RAM no intervalo normal.
+Estado vencido, vazio ou malformado é ignorado, então um Robot parado no meio de um turno
+não deixa o peito preso (no máximo 2 min). Os dois serviços do usuário já recebem o mesmo
+`XDG_RUNTIME_DIR`; `--status-file` troca o caminho. Copiando o arquivo sozinho para a Pi,
+copie a versão nova de `chest_display.py` e reinicie o serviço.
+
 ## Hardware
 
 | Item | Valor |

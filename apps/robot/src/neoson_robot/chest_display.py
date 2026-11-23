@@ -9,6 +9,10 @@ Tela (16 colunas):
 
     CPU  12%  41.3°C
     RAM   6% 0.5G/8G
+
+Enquanto o robô escuta, pensa ou fala, ele escreve o estado num arquivo em
+`$XDG_RUNTIME_DIR` (texto e validade) e o display mostra `NeoSon` e o estado no
+lugar do uso; vencido ou ausente, volta ao uso.
 """
 
 import argparse
@@ -29,6 +33,9 @@ DEFAULT_BUS = 1
 DEFAULT_ADDRESS = 0x27
 DEFAULT_INTERVAL = 2.0
 MIN_INTERVAL = 0.5
+STATUS_TICK = 0.25  # o estado do robô aparece em até 250 ms
+STATUS_NAME = "neoson-robot-status"
+STATUS_MAX_BYTES = 256
 MAX_WAIT = 300.0
 PROBE_INTERVAL = 1.0
 EXIT_NO_DISPLAY = 3  # barramento inexistente ou nada respondendo no endereço
@@ -291,6 +298,29 @@ def format_lines(snapshot: Snapshot) -> tuple[str, str]:
     return cpu, ram
 
 
+def default_status_file() -> Path | None:
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    return Path(runtime) / STATUS_NAME if runtime else None
+
+
+def write_status(path: Path, text: str, seconds: float, now: float) -> None:
+    """Grava o estado do robô de forma atômica; texto vazio = display de uso."""
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_bytes(f"{text}\n{now + seconds:.3f}\n".encode("ascii"))
+    os.replace(temporary, path)
+
+
+def read_status(path: Path, now: float) -> str | None:
+    """Estado ainda válido, ou None (ausente, vencido, vazio ou malformado)."""
+    try:
+        with path.open("rb") as source:
+            data = source.read(STATUS_MAX_BYTES)
+        text, expires = data.decode("ascii").split("\n")[:2]
+        return text if text and float(expires) > now else None
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+
+
 def _log(message: str) -> None:
     print(f"neoson-chest: {message}", file=sys.stderr, flush=True)
 
@@ -300,24 +330,42 @@ def run(
     sample: Callable[[], Snapshot],
     stop: threading.Event,
     interval: float = DEFAULT_INTERVAL,
+    status: Callable[[], str | None] | None = None,
 ) -> None:
-    """Atualiza o LCD até `stop`; falhas de I2C reiniciam o LCD na volta seguinte."""
+    """Atualiza o LCD até `stop`; falhas de I2C reiniciam o LCD na volta seguinte.
+
+    Com `status`, consulta o estado do robô a cada STATUS_TICK e só mede o uso a
+    cada `interval`; ao fim do estado, o uso volta na hora.
+    """
+    step = interval if status is None else min(interval, STATUS_TICK)
+    every = max(1, round(interval / step))
     ready = False
+    shown: str | None = None  # estado do robô na tela
+    due = 0  # voltas até a próxima medição de uso
     try:
         while True:
             try:
                 if not ready:
                     lcd.initialize()
                     lcd.show(("NeoSon", "monitor..."))
-                    ready = True
+                    ready, shown, due = True, None, 0
                     if stop.wait(interval):
                         break
-                lcd.show(format_lines(sample()))
+                text = status() if status is not None else None
+                if text is not None:
+                    if text != shown:
+                        lcd.show(("NeoSon", text))
+                        shown = text
+                    due = 0
+                elif shown is not None or due <= 0:
+                    lcd.show(format_lines(sample()))
+                    shown, due = None, every
+                due -= 1
             except OSError:
                 if ready:
                     _log("falha no I2C; o LCD será reiniciado.")
                 ready = False
-            if stop.wait(interval):
+            if stop.wait(step):
                 break
     finally:
         if ready:
@@ -370,6 +418,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--once", action="store_true", help="mede uma vez, mostra e sai"
     )
     parser.add_argument(
+        "--status-file",
+        type=Path,
+        default=default_status_file(),
+        help=f"estado escrito pelo robô (padrão $XDG_RUNTIME_DIR/{STATUS_NAME})",
+    )
+    parser.add_argument(
         "--wait",
         type=_wait,
         default=0.0,
@@ -416,7 +470,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             stop.wait(args.interval)
             lcd.show(format_lines(reader.sample()))
             return 0
-        run(lcd, reader.sample, stop, args.interval)
+        path = args.status_file
+        status = None if path is None else lambda: read_status(path, time.time())
+        run(lcd, reader.sample, stop, args.interval, status)
         return 0
     except OSError:
         _log("falha ao escrever no LCD.")

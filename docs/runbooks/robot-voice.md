@@ -29,37 +29,56 @@ tokens, texto ou áudio nesse arquivo.
 
 ## Estados
 
-### Rosto com toque e reconexão
+### Rosto com wake word "Ei NeoSon"
 
 Na sessão gráfica da Pi, com Tk/PipeWire e o ambiente privado do Robot carregado:
 
 ```bash
-.venv/bin/python -m neoson_robot.touch_voice --seconds 7
+.venv/bin/python -m neoson_robot.touch_voice
 # Para conferir em uma janela, sem os gestos da câmera:
 .venv/bin/python -m neoson_robot.touch_voice --windowed
 ```
 
-O rosto existente recebe um rótulo de estado. Toque curto para falar; aguarde cerca
-de meio segundo após o último toque e o indicador **Ouvindo**, depois fale durante
-a janela de captura. Três toques rápidos abrem a câmera e dois voltam, quando o
-touchscreen é detectado. Esses gestos não iniciam fala. Esc ou toque longo fecha.
-Não execute outra instância do rosto ou do Robot junto: pare a interface anterior
-antes de testar e restaure-a se quiser reverter.
+Diga **"Ei NeoSon"**; quando o display do peito mostrar **Escutando...**, faça o pedido.
+O pedido termina com cerca de 1 s de silêncio (no máximo `--seconds`, padrão 12, até
+15 s). Sem fala em ~4 s depois da wake word, o robô volta ao repouso sem enviar nada.
+O peito mostra `Escutando...`, `Pensando...`, `Consultando...` e `Falando...` e volta
+para CPU/RAM no fim; avisos curtos (`Nao consegui`, `Aprove na tela`, `Sem servidor`)
+somem sozinhos. O rosto não mostra texto, exceto o painel de aprovação. Tocar no rosto
+só faz ele reagir; três toques rápidos abrem a câmera e dois voltam. Esc ou toque
+longo fecha. Não execute outra instância do rosto ou do Robot junto.
 
-A interface começa offline e só aceita toque após `health/ready` responder pronto.
+Modelos da wake word (fora do Git), em `~/neoson-wake` ou `--wake-dir`:
+`melspectrogram.onnx` e `embedding_model.onnx` (openWakeWord v0.5.1) e
+`ei_neoson.onnx` (modelo da frase, treinado com vozes sintéticas). `--wake-threshold`
+(padrão 0,9) troca acertos por menos disparos falsos: suba se acordar sozinho, desça
+se não atender. Medido com vozes sintéticas que o modelo não viu no treino: a 0,9,
+~93% de acerto e ~0,8 disparo falso por hora em 10,7 h de áudio comum; a 0,5, ~96% e
+~3,6 por hora.
+
+Privacidade: o microfone fica sempre aberto, mas o áudio antes da wake word é
+analisado em trechos de 80 ms na própria Pi e descartado (fica no máximo 3 s em
+memória). Só a fala depois da wake word vai para o gateway e, de lá, para a
+transcrição configurada. Enquanto o robô fala, o microfone é ignorado, para ele não
+se acordar com a própria voz. O fim da fala segue o ruído medido antes da wake word
+(fala acima do dobro do ruído de fundo); em ambiente muito barulhento o pedido pode ir
+até o limite de tempo.
+
+A interface começa offline e só acorda após `health/ready` responder pronto.
 Falhas de saúde usam espera de 1, 2, 4, 8, 16 e no máximo 30 segundos; conectada,
-confere a cada 10 segundos. O teste de saúde não chama LLM. Toques offline/ocupado
-são descartados, sem fila. Uma falha durante a fala nunca reenvia o pedido: após
-reconectar, é preciso outro toque explícito. Um erro pode ter ocorrido depois de
-um efeito; confira o canal autenticado antes de repetir uma ação sensível.
+confere a cada 10 segundos. O teste de saúde não chama LLM. Wake word dita offline,
+com outro turno em andamento ou com o painel de aprovação na tela é ignorada, sem
+fila. Uma falha durante a fala nunca reenvia o pedido: é preciso chamar de novo. Um
+erro pode ter ocorrido depois de um efeito; confira o canal autenticado antes de
+repetir uma ação sensível. Se o microfone parar, o serviço sai com erro e o systemd
+o reinicia.
 
-Tk só desenha no thread principal; captura/rede/reprodução rodam em segundo plano
-e o rótulo recebe apenas estados/avisos fixos, sem transcrição ou resposta. Ao
-fechar, o cancelamento é sinalizado ao controlador; leitura de rede bloqueada
-pode aguardar o timeout já existente (35 s). Não há wake word nem microfone sempre
-aberto. Instalação opcional: serviço `robot-touch` no
+Tk só desenha no thread principal; escuta/rede/reprodução rodam em segundo plano. O
+estado vai para `$XDG_RUNTIME_DIR/neoson-robot-status` (texto fixo e validade, nunca
+transcrição ou resposta), que o `neoson-chest` lê; um estado vale no máximo 2 min,
+então o peito não fica preso se o Robot parar. Instalação: serviço `robot-touch` no
 [runbook de serviços](servicos-continuos.md), somente após preparar a sessão gráfica.
-Os testes usam tela/dispositivos simulados; confirmar voz e gestos no equipamento.
+Os testes usam microfone, detector e tela simulados; confirmar a wake word no equipamento.
 
 | Estado | Origem |
 |---|---|

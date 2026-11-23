@@ -21,11 +21,11 @@ from neoson_robot.touch_voice import (
     ApprovalPanel,
     ContinuousRobot,
     StatusDisplay,
-    TapToTalk,
     describe,
     gateway_ready,
 )
 from neoson_robot.voice_controller import Feedback, VoiceController
+from neoson_robot.wake import SpokenRequest, WakeListener
 
 
 class OfflineGateway:
@@ -63,56 +63,90 @@ def test_backoff_is_bounded_and_recovery_does_not_send_voice() -> None:
     assert not robot.activate()
     connected[0] = True
     assert robot.check() == 10
-    assert robot.display.text() == "Toque para falar"
+    assert robot.display.text() == ""  # em repouso o peito volta ao uso
     assert capture.calls == gateway.calls == len(jobs) == 0
     connected[0] = False
     assert robot.check() == 1
 
 
+class Mic:
+    def __init__(self, frames: int) -> None:
+        self.frames, self.cleared = frames, 0
+
+    def frame(self, timeout: float = 1.0) -> bytes | None:
+        if not self.frames:
+            return None
+        self.frames -= 1
+        return b"\0" * 2560
+
+    def clear(self) -> None:
+        self.cleared += 1
+
+
+class Detector:
+    def __init__(self) -> None:
+        self.resets = 0
+
+    def hit(self, frame: bytes) -> bool:
+        return True  # toda escuta "ouviu" a wake word
+
+    def reset(self) -> None:
+        self.resets += 1
+
+
+def listener(robot: ContinuousRobot) -> tuple[WakeListener, Mic, Detector]:
+    mic, detector = Mic(10), Detector()
+    return WakeListener(mic, detector, SpokenRequest(mic), robot), mic, detector
+
+
 def test_one_turn_at_a_time_no_queue_and_no_retry_after_connection_loss() -> None:
     robot, capture, gateway, jobs = runtime(lambda: True)
     robot.check()
-    touch = TapToTalk(robot)
-    touch.action("feliz", 0)
-    touch.status(0.4)
-    assert not jobs
-    touch.status(0.6)
+    wake, mic, detector = listener(robot)
+    assert wake.step()
     assert len(jobs) == 1
-    touch.action("feliz", 0.7)
-    assert touch.pending is None
-    assert not robot.activate()
+    assert not wake.step()  # turno em andamento: a wake word não enfileira outro
+    assert len(jobs) == 1
     jobs.pop()()
     assert capture.calls == gateway.calls == 1
     assert not robot.online.is_set()
-    robot.check()
-    touch.status(10)
+    assert not wake.step()  # offline: ouvir a frase não grava nem reenvia
     assert not jobs and gateway.calls == 1
-    assert robot.activate()
-
-
-def test_camera_gesture_and_offline_taps_do_not_activate_voice() -> None:
-    robot, capture, gateway, jobs = runtime(lambda: True)
-    touch = TapToTalk(robot)
-    touch.action("feliz", 0)
     robot.check()
-    touch.status(1)
-    assert not jobs
-    touch.action("feliz", 2)
-    touch.action("feliz", 2.2)
-    touch.action("camera", 2.4)
-    touch.status(3)
-    touch.action("rosto", 4)
-    touch.status(5)
+    assert wake.step() and len(jobs) == 1
+    # Depois de cada turno o que o microfone ouviu (inclusive a resposta) é jogado fora.
+    assert mic.cleared == detector.resets == 2
+
+
+def test_offline_or_stopped_robot_never_wakes() -> None:
+    robot, capture, gateway, jobs = runtime(lambda: False)
+    wake, mic, detector = listener(robot)
+    robot.check()
+    assert not wake.step()
+    robot.stop.set()
+    wake.run()  # sai na hora, sem ler o microfone
+    assert mic.frames == 9
     assert not jobs and capture.calls == gateway.calls == 0
+    assert detector.resets == 0  # o detector não é zerado só por estar ocupado
 
 
 @pytest.mark.parametrize("state", list(RobotState))
-def test_display_only_contains_fixed_states_and_feedback(state: RobotState) -> None:
-    display = StatusDisplay()
-    display.show(state)
-    assert display.text()
-    display.show(state, Feedback.APPROVAL)
-    assert "aprovação" in display.text()
+@pytest.mark.parametrize("feedback", list(Feedback))
+def test_chest_gets_short_fixed_ascii_states_with_expiry(
+    state: RobotState, feedback: Feedback, tmp_path: Path
+) -> None:
+    from neoson_robot.chest_display import WIDTH, encode, read_status
+
+    path = tmp_path / "status"
+    display = StatusDisplay(path, clock=lambda: 1000.0)
+    display.show(state, feedback)
+    text = display.text()
+    assert text.isascii() and len(text) <= WIDTH and b"?" not in encode(text)
+    if feedback is Feedback.APPROVAL:
+        assert text == "Aprove na tela"
+    shown = read_status(path, 1000.5)
+    assert shown == (text or None)  # repouso: nada, o peito mostra o uso
+    assert read_status(path, 1000.0 + 121) is None  # nenhum estado fica preso
 
 
 def test_stop_cancels_pending_turn_without_capture() -> None:
@@ -343,9 +377,8 @@ def test_voice_is_blocked_while_the_panel_is_on_screen() -> None:
     robot.check()
     screen.refresh(RUN)
     assert not robot.available() and not robot.activate()
-    touch = TapToTalk(robot)
-    touch.action("feliz", 0)
-    assert touch.pending is None
+    wake, _, _ = listener(robot)
+    assert not wake.step() and not jobs
     screen._action = None
     assert robot.activate() and len(jobs) == 1
 

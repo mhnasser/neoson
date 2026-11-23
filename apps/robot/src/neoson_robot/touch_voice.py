@@ -1,7 +1,14 @@
-"""Rosto com toque para falar; somente health é repetido, nunca um pedido de voz."""
+"""Rosto que acorda com "Ei NeoSon"; somente health é repetido, nunca um pedido.
+
+O rosto não mostra texto: o estado (escutando, pensando, falando) vai para o
+display do peito. O toque só faz o rosto reagir e abre a câmera; a tela só mostra
+texto no painel de aprovação.
+"""
 
 import argparse
 import json
+import os
+import signal
 import threading
 import time
 import unicodedata
@@ -15,48 +22,61 @@ import httpx2
 
 from neoson_contracts.api.v1.actions import ActionResponse
 from neoson_contracts.events.v1.robot import RobotState
+from neoson_robot.chest_display import default_status_file, write_status
 from neoson_robot.client import ApprovalClient, GatewayError
 from neoson_robot.config import api_token, gateway_url
-from neoson_robot.face import (
-    MULTI_TAP,
-    Animator,
-    CameraView,
-    find_touchscreen,
-    run_window,
-)
-from neoson_robot.pipewire import PipeWireCapture, PipeWirePlayback
+from neoson_robot.face import Animator, CameraView, find_touchscreen, run_window
+from neoson_robot.pipewire import PipeWirePlayback
 from neoson_robot.session_state import FileSessionState
 from neoson_robot.voice_client import HttpVoiceGateway
 from neoson_robot.voice_controller import Feedback, VoiceController
+from neoson_robot.wake import (
+    MAX_REQUEST_SECONDS,
+    MicStream,
+    SpokenRequest,
+    WakeListener,
+    load_wake_word,
+)
 
+# Texto do peito (LCD de 16 colunas, só ASCII) e por quantos segundos vale. A
+# validade evita estado preso se o robô parar no meio de um turno.
+ACTIVE, NOTICE, OFFLINE_SECONDS = 120.0, 5.0, 60.0
 LABELS = {
-    RobotState.IDLE: "Toque para falar",
-    RobotState.LISTENING: "Ouvindo",
-    RobotState.TRANSCRIBING: "Transcrevendo",
-    RobotState.THINKING: "Pensando",
-    RobotState.USING_TOOL: "Consultando ferramenta",
-    RobotState.SPEAKING: "Falando",
-    RobotState.ERROR: "Não consegui concluir. Toque para outro pedido",
-    RobotState.OFFLINE: "Sem conexão com o servidor",
+    RobotState.IDLE: ("", 0.0),
+    RobotState.LISTENING: ("Escutando...", ACTIVE),
+    RobotState.TRANSCRIBING: ("Pensando...", ACTIVE),
+    RobotState.THINKING: ("Pensando...", ACTIVE),
+    RobotState.USING_TOOL: ("Consultando...", ACTIVE),
+    RobotState.SPEAKING: ("Falando...", ACTIVE),
+    RobotState.ERROR: ("Nao consegui", NOTICE),
+    RobotState.OFFLINE: ("Sem servidor", OFFLINE_SECONDS),
+}
+NOTES = {
+    Feedback.APPROVAL: ("Aprove na tela", 10.0),
+    Feedback.NO_AUDIO: ("Resposta sem som", NOTICE),
 }
 
 
 class StatusDisplay:
-    def __init__(self) -> None:
+    """Estado do robô para o display do peito, nunca conteúdo da conversa."""
+
+    def __init__(
+        self, path: Path | None = None, clock: Callable[[], float] = time.time
+    ) -> None:
+        self.path, self.clock = path, clock
         self._lock = threading.Lock()
-        self.state, self.feedback = RobotState.OFFLINE, Feedback.NONE
+        self._text = ""
 
     def show(self, state: RobotState, feedback: Feedback = Feedback.NONE) -> None:
+        text, seconds = NOTES.get(feedback) or LABELS[state]
         with self._lock:
-            self.state, self.feedback = state, feedback
+            self._text = text
+            if self.path is not None:
+                write_status(self.path, text, seconds, self.clock())
 
     def text(self) -> str:
         with self._lock:
-            if self.feedback == Feedback.APPROVAL:
-                return "Aguardando aprovação no canal autenticado"
-            if self.feedback == Feedback.NO_AUDIO:
-                return "Resposta sem áudio. Toque para outro pedido"
-            return LABELS[self.state]
+            return self._text
 
 
 def background(work: Callable[[], None]) -> None:
@@ -315,43 +335,50 @@ class ContinuousRobot:
         return True
 
 
-class TapToTalk:
-    """Espera o fim dos toques rápidos para não confundir câmera com fala."""
-
-    def __init__(self, runtime: ContinuousRobot) -> None:
-        self.runtime = runtime
-        self.pending: float | None = None
-
-    def action(self, action: str, at: float) -> None:
-        self.pending = at if action == "feliz" and self.runtime.available() else None
-
-    def status(self, at: float) -> str:
-        if self.pending is not None and at - self.pending > MULTI_TAP:
-            self.pending = None
-            self.runtime.activate()
-        return self.runtime.display.text()
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gateway-url")
     parser.add_argument(
-        "--seconds", type=float, default=7, help="duração da captura, até 15 s"
+        "--seconds",
+        type=float,
+        default=12,
+        help=f"limite do pedido depois da wake word, até {MAX_REQUEST_SECONDS:.0f} s",
+    )
+    parser.add_argument(
+        "--wake-dir",
+        type=Path,
+        default=Path.home() / "neoson-wake",
+        help="pasta com melspectrogram.onnx, embedding_model.onnx e ei_neoson.onnx",
+    )
+    parser.add_argument(
+        "--wake-threshold",
+        type=float,
+        default=0.9,
+        help="pontuação mínima para acordar (mais alto = menos disparos falsos)",
     )
     parser.add_argument(
         "--state-file", type=Path, default=Path("data/robot-session.json")
     )
+    parser.add_argument(
+        "--status-file",
+        type=Path,
+        default=default_status_file(),
+        help="estado para o display do peito (padrão em $XDG_RUNTIME_DIR)",
+    )
     parser.add_argument("--windowed", action="store_true")
     args = parser.parse_args(argv)
     runtime = None
+    mic = MicStream()
+    failed = threading.Event()
     try:
         url = gateway_url(args.gateway_url)
-        capture = PipeWireCapture(args.seconds)
-        display = StatusDisplay()
+        detector = load_wake_word(args.wake_dir, args.wake_threshold)
+        request = SpokenRequest(mic, args.seconds)
+        display = StatusDisplay(args.status_file)
         token = api_token()
         with httpx2.Client(base_url=url, timeout=35, follow_redirects=False) as http:
             controller = VoiceController(
-                capture,
+                request,
                 PipeWirePlayback(),
                 display,
                 HttpVoiceGateway(http, token),
@@ -362,9 +389,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return gateway_ready(http)
 
             approvals = ApprovalPanel(ApprovalClient(http, token))
-            runtime = ContinuousRobot(controller, display, ready, approvals=approvals)
-            gestures = TapToTalk(runtime)
+            # O turno roda na thread da escuta, que só volta a ouvir depois dele.
+            runtime = ContinuousRobot(
+                controller,
+                display,
+                ready,
+                start=lambda work: work(),
+                approvals=approvals,
+            )
+            listener = WakeListener(mic, detector, request, runtime)
+
+            def listen() -> None:
+                try:
+                    listener.run()
+                except Exception:
+                    # Microfone ou detector falhou: fecha o rosto e sai com erro
+                    # para o systemd reiniciar o serviço.
+                    failed.set()
+                    os.kill(os.getpid(), signal.SIGTERM)
+
+            mic.start()
             background(runtime.monitor)
+            background(listen)
             touch = None if args.windowed else find_touchscreen()
             try:
                 run_window(
@@ -374,25 +420,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                     0,
                     touch=touch,
                     camera=CameraView() if touch else None,
-                    on_action=gestures.action,
-                    status=gestures.status,
                     prompt=approvals.view,
                     on_choice=approvals.choose,
                 )
             finally:
                 runtime.stop.set()
+        if failed.is_set():
+            print("A escuta parou: confira o microfone.")
+            return 1
         return 0
     except KeyboardInterrupt:
         return 130
     except Exception:
         print(
             "Não foi possível iniciar a interface de voz. "
-            "Confira tela, áudio e configuração."
+            "Confira tela, áudio, modelos da wake word e configuração."
         )
         return 1
     finally:
         if runtime is not None:
             runtime.stop.set()
+        mic.close()
 
 
 if __name__ == "__main__":
