@@ -9,18 +9,25 @@ se repetem em loop, com transições suaves de meio segundo:
 | Neutro | 8 s | olhos ovais; olha para a esquerda e para a direita e pisca |
 | Surpreso | 4,5 s | olhos redondos e maiores, que dão um salto rápido e piscam |
 
-A expressão **feliz** (olhos em arco, "^ ^", dando pequenos pulos) não entra no loop: aparece
-só como reação ao toque.
+A expressão **carinho** (olhos fechados em arco, "^ ^", balançando devagar de um lado
+para o outro) não entra no loop: aparece quando alguém esfrega a tela.
 
-Toque na tela:
+Gestos na tela, que não se confundem: um toque é curto (menos de 0,6 s) e com o dedo
+parado; dedo que se move é carinho e nunca conta como toque nem como segurar.
 
-- **toque curto**: o rosto fica feliz por 2,5 s e volta ao loop;
+- **esfregar** (cerca de meia largura de tela de caminho do dedo, com ou sem ir e voltar):
+  carinho, que continua enquanto o dedo se move e acaba 2,5 s depois;
+- **toque isolado**: nada;
 - **3 toques rápidos** (até 0,5 s entre eles): mostra a imagem ao vivo da câmera em tela
-  cheia, por cima do rosto;
+  cheia, por cima do rosto. Esfregar no meio da sequência a cancela;
 - **2 toques rápidos**, com a câmera aberta: fecha a câmera e volta ao rosto;
-- **toque longo (3 s)** no rosto, ou **Esc**: fecha o rosto e devolve a área de trabalho
-  (para, por exemplo, reiniciar a Pi pelo menu). O atalho "Rosto do NeoSon" no menu reabre
-  o rosto. Com a câmera aberta, o toque longo não fecha nada.
+- **segurar 3 s com o dedo parado** no rosto, ou **Esc**: fecha o rosto e devolve a área de
+  trabalho (para, por exemplo, reiniciar a Pi pelo menu). O atalho "Rosto do NeoSon" no menu
+  reabre o rosto. Esfregar por mais de 3 s não fecha; com a câmera aberta, segurar não fecha
+  nada.
+
+A posição do dedo vem do próprio touchscreen (`ABS_X`/`ABS_Y`, escalados pela largura do eixo
+lida do dispositivo). Em `--windowed`, arrastar o mouse com o botão apertado também faz carinho.
 
 ### Câmera
 
@@ -60,7 +67,7 @@ labwc inicia sob demanda.
 
 | Opção | Efeito |
 |---|---|
-| `--expression neutro\|feliz\|surpreso` | repete só essa expressão (a cada 6 s) |
+| `--expression neutro\|feliz\|surpreso\|carinho` | repete só essa expressão (a cada 6 s) |
 | `--fps N` | quadros por segundo (padrão 30, de 5 a 60) |
 | `--color #rrggbb` | cor base dos olhos (padrão `#0a50ff`, azul saturado no tom do LCD 1602) |
 | `--seconds S` | fecha depois de S segundos (padrão 0: não fecha) |

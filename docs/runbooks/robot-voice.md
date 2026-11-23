@@ -44,9 +44,10 @@ O pedido termina com cerca de 1 s de silêncio (no máximo `--seconds`, padrão 
 15 s). Sem fala em ~4 s depois da wake word, o robô volta ao repouso sem enviar nada.
 O peito mostra `Escutando...`, `Pensando...`, `Consultando...` e `Falando...` e volta
 para CPU/RAM no fim; avisos curtos (`Nao consegui`, `Aprove na tela`, `Sem servidor`)
-somem sozinhos. O rosto não mostra texto, exceto o painel de aprovação. Tocar no rosto
-só faz ele reagir; três toques rápidos abrem a câmera e dois voltam. Esc ou toque
-longo fecha. Não execute outra instância do rosto ou do Robot junto.
+somem sozinhos. O rosto não mostra texto, exceto o painel de aprovação. Esfregar a tela
+é carinho; três toques rápidos abrem a câmera e dois voltam; segurar 3 s com o dedo
+parado, ou Esc, fecha (gestos no [runbook do rosto](rosto-do-robo.md)). Não execute
+outra instância do rosto ou do Robot junto.
 
 Modelos da wake word (fora do Git), em `~/neoson-wake` ou `--wake-dir`:
 `melspectrogram.onnx` e `embedding_model.onnx` (openWakeWord v0.5.1) e

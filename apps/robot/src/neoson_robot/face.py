@@ -1,10 +1,12 @@
 """Rosto do robô na tela de 7": dois olhos animados, em tela cheia, sobre fundo preto.
 
 As expressões neutro e surpreso se repetem em loop, com transições suaves, piscadas
-e olhares. A expressão feliz aparece só com um toque curto, por alguns segundos;
-três toques rápidos mostram a câmera em tela cheia e dois toques rápidos voltam ao
-rosto; um toque longo (3 s) ou Esc fecha. A lógica (formas, linha do tempo, cena em
-pixels e gestos) não depende de tela e é testada sem Tk; só `run_window` desenha.
+e olhares. Esfregar a tela é carinho: os olhos viram arcos felizes e balançam enquanto
+o dedo se move. Três toques rápidos (dedo parado) mostram a câmera em tela cheia e dois
+voltam ao rosto; segurar 3 s com o dedo parado, ou Esc, fecha. Dedo que se move não
+conta como toque nem como segurar, então os gestos não se confundem. A lógica (formas,
+linha do tempo, cena em pixels e gestos) não depende de tela e é testada sem Tk; só
+`run_window` desenha.
 Usa só a biblioteca padrão, então também roda copiado sozinho para a Pi
 (`python3 face.py`).
 """
@@ -27,9 +29,13 @@ from typing import Any, Protocol
 DESIGN_W, DESIGN_H = 800.0, 480.0  # coordenadas de projeto, escaladas para a tela
 TRANSITION = 0.5  # s para trocar de expressão
 BLINK = 0.18  # s de uma piscada
-REACTION = 2.5  # s de alegria depois de um toque
+REACTION = 2.5  # s de carinho depois do último movimento do dedo
 TAP = 0.6  # toque mais curto que isso é "toque curto"
 HOLD_TO_CLOSE = 3.0
+# Caminho do dedo, em larguras de tela: STILL é o tremor de um dedo parado; cada
+# PET_DISTANCE percorrida esfregando renova o carinho.
+STILL = 0.03
+PET_DISTANCE = 0.5
 MULTI_TAP = 0.5  # s máximos entre dois toques da mesma sequência
 CAMERA_TAPS = 3  # toques rápidos no rosto que abrem a câmera
 FACE_TAPS = 2  # toques rápidos na câmera que voltam ao rosto
@@ -37,7 +43,9 @@ CAMERA_MAX = 300.0  # s: por segurança, a câmera volta sozinha ao rosto
 CAMERA_COMMAND = ("rpicam-hello", "-t", "0", "--fullscreen", "--info-text", "")
 ROOT = Path("/")
 _EV_KEY, _BTN_TOUCH = 0x01, 0x14A  # linux/input-event-codes.h
+_EV_ABS, _ABS_X, _ABS_Y = 0x03, 0x00, 0x01
 _INPUT_EVENT = struct.Struct("llHHi")  # struct input_event (timeval, type, code, value)
+_ABSINFO = struct.Struct("6i")  # struct input_absinfo (value, min, max, ...)
 # Instantes (s) em que o rosto confere se está mesmo em tela cheia.
 FULLSCREEN_CHECKS = (0.5, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0, 30.0, 45.0, 60.0)
 DEFAULT_FPS = 30
@@ -94,8 +102,9 @@ EXPRESSIONS: dict[str, Face] = {
     "neutro": _pair(150, 240, 150, 180, 60),
     "feliz": _pair(155, 252, 176, 176, 88, smile=1.0),
     "surpreso": _pair(160, 232, 196, 196, 98),
+    "carinho": _pair(150, 256, 170, 170, 85, smile=1.0),
 }
-# Loop sem toque. A expressão feliz fica reservada para a reação ao toque (`Animator`).
+# Loop sem toque. Feliz e carinho ficam fora do loop; carinho é a reação a esfregar.
 PROGRAM: tuple[tuple[str, float], ...] = (
     ("neutro", 8.0),
     ("surpreso", 4.5),
@@ -198,6 +207,10 @@ def behave(name: str, u: float, duration: float) -> Face:
         envelope = min(1.0, max(0.0, (u - TRANSITION) / 0.3), (duration - u) / 0.4)
         hop = abs(math.sin(math.pi * 2.2 * u)) * 12.0 * max(0.0, envelope)
         face = face.each(lambda eye: eye.moved(dy=-hop))
+    elif name == "carinho":
+        # Olhos fechados de gosto, balançando devagar de um lado para o outro.
+        sway = math.sin(2 * math.pi * 0.8 * u) * 14.0
+        face = face.each(lambda eye: eye.moved(dx=sway))
     elif name == "surpreso" and TRANSITION <= u < TRANSITION + 0.5:
         # Já redondos, os olhos dão um salto rápido e voltam ao tamanho.
         pop = 1.0 + 0.12 * math.sin(math.pi * (u - TRANSITION) / 0.5)
@@ -228,27 +241,32 @@ def program_face(
 
 
 class Animator:
-    """Linha do tempo do rosto, com a reação a toques por cima do programa."""
+    """Linha do tempo do rosto, com o carinho por cima do programa."""
 
     def __init__(self, program: Sequence[tuple[str, float]] = PROGRAM) -> None:
         if not program or any(duration <= TRANSITION for _, duration in program):
             raise ValueError(f"cada fase precisa de mais de {TRANSITION} s")
         self.program = tuple(program)
         self._reaction: float | None = None
+        self._until = 0.0
 
     def react(self, t: float) -> None:
-        self._reaction = t
+        """Começa o carinho, ou o estende sem recomeçar se ainda estiver na tela."""
+        if self._reaction is None or not self._reaction <= t < self._until:
+            self._reaction = t
+        self._until = t + REACTION
 
     def frame(self, t: float) -> Face:
         _, face = program_face(t, self.program)
         if self._reaction is None:
             return face
-        r = t - self._reaction
-        if r >= REACTION or r < 0:
+        r, left = t - self._reaction, self._until - t
+        if left <= 0 or r < 0:
             self._reaction = None
             return face
-        weight = ease(min(1.0, r / 0.3, (REACTION - r) / 0.4))
-        return mix_face(face, behave("feliz", r + TRANSITION, REACTION), weight)
+        weight = ease(min(1.0, r / 0.3, left / 0.4))
+        pet = behave("carinho", r + TRANSITION, self._until - self._reaction)
+        return mix_face(face, pet, weight)
 
 
 def rounded_rect(
@@ -338,12 +356,13 @@ class FullscreenGuard:
 
 
 class Gestures:
-    """Transforma pressões e solturas da tela em ações.
+    """Transforma pressões, movimentos e solturas da tela em ações.
 
-    No rosto: 1 toque curto = "feliz"; CAMERA_TAPS toques rápidos = "camera"; toque
-    longo (HOLD_TO_CLOSE) = fechar, conferido por `held`. Na câmera: FACE_TAPS toques
-    rápidos = "rosto". Toques são rápidos quando a soltura de um fica a até MULTI_TAP
-    da soltura do anterior. Sem câmera disponível, os toques só deixam o rosto feliz.
+    No rosto: esfregar = "carinho" (a cada PET_DISTANCE de caminho do dedo);
+    CAMERA_TAPS toques rápidos = "camera"; segurar parado (HOLD_TO_CLOSE) = fechar,
+    conferido por `held`. Na câmera: FACE_TAPS toques rápidos = "rosto". Toque é curto
+    e com o dedo parado (até STILL); toques são rápidos quando a soltura de um fica a
+    até MULTI_TAP da soltura do anterior. Dedo que se move nunca é toque nem segurar.
     """
 
     def __init__(self, camera_enabled: bool = True) -> None:
@@ -351,12 +370,31 @@ class Gestures:
         self.camera = False
         self._pressed_at: float | None = None
         self._taps: list[float] = []
+        self._last: tuple[float, float] | None = None
+        self._path = 0.0
+        self._pets = 0
 
     def press(self, t: float) -> None:
         self._pressed_at = t
+        self._last, self._path, self._pets = None, 0.0, 0
+
+    def move(self, t: float, x: float, y: float) -> str | None:
+        """Posição do dedo em larguras de tela; devolve "carinho" ao esfregar."""
+        if self._pressed_at is None:
+            return None
+        if self._last is not None:
+            self._path += math.hypot(x - self._last[0], y - self._last[1])
+        self._last = (x, y)
+        if self.camera or self._path < (self._pets + 1) * PET_DISTANCE:
+            return None
+        self._pets += 1
+        return "carinho"
 
     def release(self, t: float) -> str | None:
         start, self._pressed_at = self._pressed_at, None
+        if self._path > STILL:  # esfregou: não entra numa sequência de toques
+            self._taps = []
+            return None
         if start is None or t - start >= TAP:
             return None
         if self._taps and t - self._taps[-1] > MULTI_TAP:
@@ -372,12 +410,17 @@ class Gestures:
             self._taps = []
             self.camera = True
             return "camera"
-        return "feliz" if count == 1 else None
+        return None
 
     def held(self, t: float) -> bool:
-        """Toque longo no rosto (na câmera, não fecha nada)."""
+        """Dedo parado por HOLD_TO_CLOSE no rosto (na câmera, não fecha nada)."""
         pressed = self._pressed_at
-        return not self.camera and pressed is not None and t - pressed >= HOLD_TO_CLOSE
+        return (
+            not self.camera
+            and pressed is not None
+            and self._path <= STILL
+            and t - pressed >= HOLD_TO_CLOSE
+        )
 
     def camera_closed(self) -> None:
         self.camera = False
@@ -387,6 +430,7 @@ class Gestures:
         """Esquece toques em curso (ex.: enquanto um painel de aprovação aparece)."""
         self._pressed_at = None
         self._taps = []
+        self._last, self._path, self._pets = None, 0.0, 0
 
 
 def prompt_buttons(width: float, height: float) -> tuple[Box, Box]:
@@ -405,14 +449,33 @@ def choice_at(x: float, y: float, width: float, height: float) -> bool | None:
     return None
 
 
-def touch_changes(data: bytes) -> list[bool]:
-    """Pressões (True) e solturas (False) do toque em eventos crus do evdev."""
+def touch_changes(data: bytes) -> list[bool | tuple[int, int]]:
+    """Eventos crus do evdev: pressão (True), soltura (False) e (eixo, valor) da
+    posição em ABS_X/ABS_Y."""
     usable = len(data) - len(data) % _INPUT_EVENT.size
-    return [
-        value == 1
-        for _sec, _usec, kind, code, value in _INPUT_EVENT.iter_unpack(data[:usable])
-        if kind == _EV_KEY and code == _BTN_TOUCH and value in (0, 1)
-    ]
+    changes: list[bool | tuple[int, int]] = []
+    for _sec, _usec, kind, code, value in _INPUT_EVENT.iter_unpack(data[:usable]):
+        if kind == _EV_KEY and code == _BTN_TOUCH and value in (0, 1):
+            changes.append(value == 1)
+        elif kind == _EV_ABS and code in (_ABS_X, _ABS_Y):
+            changes.append((code, value))
+    return changes
+
+
+def axis_span(fd: int) -> float:
+    """Largura do eixo X do touchscreen (EVIOCGABS); a do projeto se não ler."""
+    if sys.platform == "win32":
+        return DESIGN_W
+    import fcntl
+
+    request = (2 << 30) | (_ABSINFO.size << 16) | (ord("E") << 8) | (0x40 + _ABS_X)
+    try:
+        _value, low, high, *_ = _ABSINFO.unpack(
+            fcntl.ioctl(fd, request, bytes(_ABSINFO.size))
+        )
+    except OSError:
+        return DESIGN_W
+    return float(high - low + 1) if high > low else DESIGN_W
 
 
 def has_touch_button(capabilities: str) -> bool:
@@ -437,19 +500,26 @@ def find_touchscreen(root: Path = ROOT) -> Path | None:
     return None
 
 
+TouchEvent = bool | tuple[float, float]  # pressionou/soltou, ou posição (x, y)
+
+
 def read_touches(
     path: Path,
-    sink: Callable[[float, bool], None],
+    sink: Callable[[float, TouchEvent], None],
     clock: Callable[[], float] = time.monotonic,
 ) -> None:
-    """Lê o dispositivo até o fim ou um erro, entregando (instante, pressionado).
+    """Lê o dispositivo até o fim ou um erro, entregando (instante, evento).
 
-    Não toma o dispositivo para si: a sessão gráfica continua recebendo os toques.
+    O evento é True/False (pressionou/soltou) ou a posição do dedo em larguras de
+    tela. Não toma o dispositivo para si: a sessão gráfica continua recebendo os
+    toques.
     """
     try:
         fd = os.open(path, os.O_RDONLY)
     except OSError:
         return
+    span = axis_span(fd)
+    position: dict[int, int] = {}
     pending = b""
     try:
         while True:
@@ -461,8 +531,14 @@ def read_touches(
                 return
             pending += chunk
             usable = len(pending) - len(pending) % _INPUT_EVENT.size
-            for down in touch_changes(pending[:usable]):
-                sink(clock(), down)
+            for change in touch_changes(pending[:usable]):
+                if isinstance(change, bool):
+                    sink(clock(), change)
+                    continue
+                position[change[0]] = change[1]
+                if len(position) == 2:
+                    x, y = position[_ABS_X] / span, position[_ABS_Y] / span
+                    sink(clock(), (x, y))
             pending = pending[usable:]
     finally:
         os.close(fd)
@@ -605,12 +681,12 @@ def run_window(
     delay = max(1, round(1000 / fps))
     guard = FullscreenGuard() if fullscreen else None
     gestures = Gestures(camera_enabled=camera is not None and touch is not None)
-    touches: queue.SimpleQueue[tuple[float, bool]] = queue.SimpleQueue()
+    touches: queue.SimpleQueue[tuple[float, TouchEvent]] = queue.SimpleQueue()
     camera_since: list[float] = []
     if touch is not None:
 
-        def deliver(at: float, down: bool) -> None:
-            touches.put((at - start, down))
+        def deliver(at: float, event: TouchEvent) -> None:
+            touches.put((at - start, event))
 
         reader = threading.Thread(target=read_touches, args=(touch, deliver))
         reader.daemon = True
@@ -627,7 +703,7 @@ def run_window(
     def handle(action: str | None, t: float) -> None:
         if action is not None and on_action is not None:
             on_action(action, t)
-        if action == "feliz":
+        if action == "carinho":
             animator.react(t)
         elif action == "camera":
             if camera is not None and camera.open():
@@ -694,13 +770,15 @@ def run_window(
         if shown is not None:
             gestures.reset()
         while not touches.empty():
-            at, down = touches.get_nowait()
+            at, event = touches.get_nowait()
             if shown is not None:
                 continue  # o painel usa o toque com posição, vindo do Tk
-            if down:
+            if event is True:
                 gestures.press(at)
-            else:
+            elif event is False:
                 handle(gestures.release(at), at)
+            else:
+                handle(gestures.move(at, *event), at)
         follow_camera(t)
         if (seconds and t >= seconds) or gestures.held(t):
             close()
@@ -734,8 +812,15 @@ def run_window(
         if touch is None:
             handle(gestures.release(now()), now())
 
+    def motion(event: Any) -> None:
+        # Sem touchscreen lido direto (ex.: em janela), o mouse também faz carinho.
+        if touch is None and (prompt is None or prompt() is None):
+            span = max(1, canvas.winfo_width())
+            handle(gestures.move(now(), event.x / span, event.y / span), now())
+
     canvas.bind("<ButtonPress-1>", press)
     canvas.bind("<ButtonRelease-1>", release)
+    canvas.bind("<B1-Motion>", motion)
     root.bind("<Escape>", lambda _event: close())
     # SIGTERM (ex.: systemctl stop) também fecha a câmera antes de sair.
     signal.signal(signal.SIGTERM, lambda _signum, _frame: root.after(0, close))

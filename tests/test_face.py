@@ -15,6 +15,7 @@ from neoson_robot.face import (
     EXPRESSIONS,
     HOLD_TO_CLOSE,
     LAYERS,
+    PET_DISTANCE,
     PROGRAM,
     REACTION,
     TAP,
@@ -133,25 +134,30 @@ def test_neutral_face_glances_to_both_sides() -> None:
     assert left.left.h > left.right.h  # o olho do lado do olhar cresce
 
 
-def test_happy_face_hops_on_touch_and_surprised_face_pops() -> None:
-    base = EXPRESSIONS["feliz"].left
+def test_petting_closes_the_eyes_happily_and_surprised_face_pops() -> None:
+    base = EXPRESSIONS["carinho"].left
     animator = Animator()
     animator.react(1.0)
-    heights = [animator.frame(1.6 + i * 0.05).left.y for i in range(20)]
-    assert min(heights) < base.y - 5
-    assert max(heights) <= base.y + 1e-9
+    eyes = [animator.frame(1.6 + i * 0.05).left for i in range(20)]
+    assert all(eye.smile == pytest.approx(1.0) for eye in eyes)
+    xs = [eye.x for eye in eyes]
+    assert min(xs) < base.x - 5 and max(xs) > base.x + 5  # balança de lado
+    assert all(eye.y == pytest.approx(base.y) for eye in eyes)  # sem pulo
 
     surprised = EXPRESSIONS["surpreso"].left
     popped = program_face(8.0 + TRANSITION + 0.25)[1].left
     assert popped.w > surprised.w * 1.05
 
 
-def test_tap_reaction_makes_any_expression_happy_for_a_while() -> None:
+def test_petting_lasts_while_rubbing_without_restarting() -> None:
     animator = Animator()
     animator.react(2.0)
     assert animator.frame(2.0 + 1.0).left.smile == pytest.approx(1.0)
-    assert animator.frame(2.0 + REACTION + 0.1).left.smile == 0.0
-    assert animator.frame(2.0 + 1.0).left.smile == 0.0  # reação já terminou
+    animator.react(3.0)  # ainda esfregando: estende, sem voltar ao começo
+    assert animator.frame(3.05).left.smile == pytest.approx(1.0)
+    assert animator.frame(2.0 + REACTION + 0.1).left.smile == pytest.approx(1.0)
+    assert animator.frame(3.0 + REACTION + 0.1).left.smile == 0.0
+    assert animator.frame(3.5).left.smile == 0.0  # reação já terminou
 
 
 def test_animator_rejects_phases_shorter_than_the_transition() -> None:
@@ -280,28 +286,63 @@ def test_needs_fullscreen_only_when_window_is_clearly_smaller() -> None:
 
 def tap(gestures: Gestures, t: float) -> str | None:
     gestures.press(t)
+    gestures.move(t + 0.02, 0.5, 0.5)
+    gestures.move(t + 0.05, 0.51, 0.5)  # tremor de dedo parado
     return gestures.release(t + 0.1)
 
 
-def test_single_tap_makes_the_face_happy() -> None:
+def rub(gestures: Gestures, t: float, strokes: int) -> list[str | None]:
+    """Esfrega de um lado ao outro (0,3 de largura por vez) sem soltar."""
+    gestures.press(t)
+    actions = [gestures.move(t, 0.3, 0.4)]
+    for i in range(1, strokes + 1):
+        actions.append(gestures.move(t + 0.15 * i, 0.3 + 0.3 * (i % 2), 0.4))
+    return [a for a in actions if a is not None]
+
+
+def test_single_tap_does_nothing_and_rubbing_is_petting() -> None:
     gestures = Gestures()
-    assert tap(gestures, 1.0) == "feliz"
-    assert tap(gestures, 3.0) == "feliz"  # depois da janela: outra sequência
+    assert tap(gestures, 1.0) is None
+    assert rub(gestures, 3.0, 1) == []  # deslizar pouco ainda não é carinho
+    assert rub(gestures, 6.0, 4) == ["carinho"] * int(4 * 0.3 / PET_DISTANCE)
+    assert gestures.release(7.0) is None
+    assert gestures.move(7.5, 0.9, 0.9) is None  # dedo solto não esfrega
 
 
 def test_three_quick_taps_open_camera_and_two_close_it() -> None:
     gestures = Gestures()
-    assert [tap(gestures, t) for t in (1.0, 1.3, 1.6)] == ["feliz", None, "camera"]
+    assert [tap(gestures, t) for t in (1.0, 1.3, 1.6)] == [None, None, "camera"]
     assert gestures.camera
+    assert rub(gestures, 3.0, 6) == []  # esfregar na câmera não faz nada
+    gestures.release(4.0)
     assert tap(gestures, 5.0) is None  # um toque só não volta
     assert tap(gestures, 5.3) == "rosto"
     assert not gestures.camera
-    assert tap(gestures, 8.0) == "feliz"
+    assert tap(gestures, 8.0) is None
+
+
+def test_gestures_never_overlap() -> None:
+    gestures = Gestures()
+    # Esfregar entre toques quebra a sequência: não abre a câmera.
+    tap(gestures, 1.0)
+    rub(gestures, 1.2, 4)
+    gestures.release(1.4)
+    assert [tap(gestures, t) for t in (1.6, 1.9)] == [None, None]
+    assert not gestures.camera
+    # Esfregar por mais de 3 s não fecha o rosto; segurar parado fecha.
+    rub(gestures, 10.0, 30)
+    assert not gestures.held(10.0 + HOLD_TO_CLOSE + 2)
+    assert gestures.release(15.0) is None  # nem conta como toque
+    gestures.press(20.0)
+    gestures.move(20.5, 0.5, 0.5)
+    gestures.move(21.0, 0.51, 0.51)
+    assert gestures.held(20.0 + HOLD_TO_CLOSE)
 
 
 def test_slow_taps_and_long_presses_are_not_a_sequence() -> None:
     gestures = Gestures()
-    assert [tap(gestures, t) for t in (1.0, 2.0, 3.0)] == ["feliz"] * 3
+    assert [tap(gestures, t) for t in (1.0, 2.0, 3.0)] == [None] * 3
+    assert not gestures.camera
     gestures.press(10.0)
     assert gestures.release(10.0 + TAP + 0.05) is None  # não é toque curto
     gestures.press(20.0)
@@ -311,7 +352,7 @@ def test_slow_taps_and_long_presses_are_not_a_sequence() -> None:
 
 def test_camera_gestures_can_be_off_and_long_press_on_camera_keeps_it() -> None:
     off = Gestures(camera_enabled=False)
-    assert [tap(off, t) for t in (1.0, 1.3, 1.6)] == ["feliz", None, None]
+    assert [tap(off, t) for t in (1.0, 1.3, 1.6)] == [None, None, None]
     assert not off.camera
 
     on = Gestures()
@@ -332,17 +373,20 @@ def touch_caps() -> str:
     return f"{1 << (0x14A % bits):x}" + " 0" * (0x14A // bits)
 
 
-def test_touch_changes_reads_only_the_touch_button() -> None:
+def test_touch_changes_reads_the_touch_button_and_position() -> None:
     data = (
         input_event(1, 0x14A, 1)  # BTN_TOUCH pressionado
-        + input_event(3, 0x35, 120)  # posição (ignorada)
+        + input_event(3, 0x35, 120)  # posição multitoque (ignorada)
+        + input_event(3, 0x00, 400)  # ABS_X
+        + input_event(3, 0x01, 240)  # ABS_Y
         + input_event(0, 0, 0)  # SYN
         + input_event(1, 0x14A, 0)  # BTN_TOUCH solto
         + input_event(1, 0x110, 1)  # outro botão
         + input_event(1, 0x14A, 2)  # repetição
     )
-    assert touch_changes(data) == [True, False]
-    assert touch_changes(data[:-5]) == [True, False]  # evento cortado no fim
+    expected = [True, (0, 400), (1, 240), False]
+    assert touch_changes(data) == expected
+    assert touch_changes(data[:-5]) == expected  # evento cortado no fim
 
 
 def test_touch_button_capability_bits() -> None:
@@ -365,16 +409,24 @@ def test_find_touchscreen_picks_the_device_with_touch_button(tmp_path: Path) -> 
     assert find_touchscreen(tmp_path) is None
 
 
-def test_read_touches_streams_presses_until_the_end(tmp_path: Path) -> None:
+def test_read_touches_streams_presses_and_positions_until_the_end(
+    tmp_path: Path,
+) -> None:
     device = tmp_path / "event7"
     device.write_bytes(
-        input_event(1, 0x14A, 1) + input_event(0, 0, 0) + input_event(1, 0x14A, 0)
+        input_event(1, 0x14A, 1)
+        + input_event(3, 0x00, 400)  # só x: ainda sem posição completa
+        + input_event(3, 0x01, 240)
+        + input_event(0, 0, 0)
+        + input_event(3, 0x00, 600)
+        + input_event(1, 0x14A, 0)
     )
-    seen: list[tuple[float, bool]] = []
-    read_touches(device, lambda t, down: seen.append((t, down)), clock=lambda: 7.0)
-    assert seen == [(7.0, True), (7.0, False)]
-    read_touches(tmp_path / "nada", lambda t, down: seen.append((t, down)))
-    assert len(seen) == 2
+    seen: list[tuple[float, object]] = []
+    read_touches(device, lambda t, event: seen.append((t, event)), clock=lambda: 7.0)
+    # Arquivo comum não tem eixo do evdev: escala pela largura de projeto (800).
+    assert seen == [(7.0, True), (7.0, (0.5, 0.3)), (7.0, (0.75, 0.3)), (7.0, False)]
+    read_touches(tmp_path / "nada", lambda t, event: seen.append((t, event)))
+    assert len(seen) == 4
 
 
 class FakeProcess:

@@ -173,6 +173,8 @@ def test_tk_adapter_delivers_taps_and_draws_status_on_a_fake_screen(
     def loop() -> None:
         bindings = {call.args[0]: call.args[1] for call in canvas.bind.call_args_list}
         bindings["<ButtonPress-1>"](None)
+        for x in (200, 440, 200, 440):  # esfregar com o mouse, em janela
+            bindings["<B1-Motion>"](SimpleNamespace(x=x, y=240))
         bindings["<ButtonRelease-1>"](None)
         callbacks.pop(0)()
 
@@ -188,7 +190,7 @@ def test_tk_adapter_delivers_taps_and_draws_status_on_a_fake_screen(
     )
     monkeypatch.setattr("neoson_robot.face.signal.signal", lambda *args: None)
     face.run_window(face.Animator(), 30, False, 0, on_action=action, status=status)
-    assert action.call_args.args[0] == "feliz"
+    assert action.call_args.args[0] == "carinho"
     canvas.itemconfigure.assert_called_once_with(99, text="Ouvindo")
 
 
