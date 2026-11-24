@@ -21,7 +21,7 @@ from neoson_contracts.events.v1.robot import (
     VoiceSpeech,
 )
 from neoson_core.engine import AgentLoop, Budget, EchoEngine
-from neoson_core.engine.voice import VoicePipeline
+from neoson_core.engine.voice import VoicePipeline, pcm_wav
 from neoson_core.providers.fake import ScriptedProvider, call_tool, reply
 from neoson_core.providers.fake_speech import FakeSpeech
 from neoson_core.routing.rules import RulesRouter
@@ -465,6 +465,160 @@ def test_closing_stream_cancels_server_and_releases_admission() -> None:
         assert (await pipeline.process(load, None, "owner")).audio is not None
 
     asyncio.run(scenario())
+
+
+def spoken(index: int) -> VoiceSpeech:
+    # Duração diferente por frase, para conferir a ordem tocada.
+    audio = pcm_wav(b"\x00\x00" * 1600 * (index + 1))
+    return VoiceSpeech(index=index, audio_base64=base64.b64encode(audio).decode())
+
+
+class ScriptedGateway(Gateway):
+    def __init__(self, *script: VoiceEvent) -> None:
+        super().__init__()
+        self.script = script
+
+    def events(
+        self, audio: bytes, session_id: object, simulated_capture: bool
+    ) -> Iterator[VoiceEvent]:
+        self.sessions.append(session_id)
+        try:
+            yield from self.script
+        finally:
+            self.closed = True
+
+
+class RecordingPlayback(FakePlayback):
+    def __init__(self) -> None:
+        super().__init__()
+        self.played: list[bytes] = []
+
+    def play(self, audio: bytes, cancelled: Any) -> None:
+        super().play(audio, cancelled)
+        self.played.append(audio)
+
+
+def speaking_controller(
+    *script: VoiceEvent,
+) -> tuple[VoiceController, RecordingPlayback, FakeDisplay, ScriptedGateway]:
+    gateway, play, display = (
+        ScriptedGateway(*script),
+        RecordingPlayback(),
+        FakeDisplay(),
+    )
+    control = VoiceController(FakeCapture(), play, display, gateway)
+    return control, play, display, gateway
+
+
+STREAMED = result(audio_status="streamed", audio_base64=None, simulated=False)
+
+
+def test_client_requests_speech_stream_and_parses_speech_events() -> None:
+    sent: list[httpx2.Request] = []
+    body = b"".join(
+        VOICE_EVENT.dump_json(e) + b"\n"
+        for e in (spoken(0), VoiceCompleted(result=STREAMED))
+    )
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(
+            200, content=body, headers={"content-type": "application/x-ndjson"}
+        )
+
+    client = HttpVoiceGateway(
+        httpx2.Client(
+            base_url="http://gateway.test", transport=httpx2.MockTransport(handler)
+        ),
+        "test-only",
+    )
+
+    events = list(client.events(silent_wav(), None, True))
+
+    assert [type(e) for e in events] == [VoiceSpeech, VoiceCompleted]
+    assert sent[0].headers["x-neoson-speech"] == "stream"
+
+
+def test_playback_time_does_not_consume_stream_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr("neoson_robot.voice_client.monotonic", lambda: clock[0])
+    frames = [
+        VOICE_EVENT.dump_json(spoken(0)) + b"\n",
+        VOICE_EVENT.dump_json(VoiceCompleted(result=STREAMED)) + b"\n",
+    ]
+
+    def client(slow_server: bool) -> HttpVoiceGateway:
+        def chunks() -> Iterator[bytes]:
+            yield frames[0]
+            if slow_server:
+                clock[0] += 100
+            yield frames[1]
+
+        return HttpVoiceGateway(
+            httpx2.Client(
+                base_url="http://gateway.test",
+                transport=httpx2.MockTransport(
+                    lambda r: httpx2.Response(
+                        200,
+                        content=chunks(),
+                        headers={"content-type": "application/x-ndjson"},
+                    )
+                ),
+            ),
+            "test-only",
+        )
+
+    events = []
+    for event in client(slow_server=False).events(silent_wav(), None, True):
+        clock[0] += 100  # o robô tocando a frase
+        events.append(event)
+    assert [e.type for e in events] == ["speech", "result"]
+
+    clock[0] = 0.0
+    with pytest.raises(GatewayError):
+        list(client(slow_server=True).events(silent_wav(), None, True))
+
+
+def test_controller_plays_sentences_in_order_then_finishes() -> None:
+    control, play, display, _ = speaking_controller(
+        VoiceProgress(state="thinking"),
+        spoken(0),
+        VoiceProgress(state="using_tool"),
+        spoken(1),
+        VoiceCompleted(result=STREAMED),
+    )
+
+    outcome = control.interact(True)
+
+    assert play.played == [
+        base64.b64decode(spoken(0).audio_base64),
+        base64.b64decode(spoken(1).audio_base64),
+    ]
+    states = [state.value for state, _ in display.frames]
+    assert states[-5:] == ["thinking", "speaking", "using_tool", "speaking", "idle"]
+    assert outcome.feedback is Feedback.NONE
+
+
+def test_cancel_during_sentence_stops_playback_and_stream() -> None:
+    control, play, _, gateway = speaking_controller(
+        spoken(0), spoken(1), VoiceCompleted(result=STREAMED)
+    )
+
+    outcome = control.interact(True, lambda: len(play.played) > 0)
+
+    assert outcome.feedback is Feedback.CANCELLED
+    assert len(play.played) == 1 and play.stopped and gateway.closed
+
+
+def test_partial_speech_then_synthesis_failure_reports_no_audio() -> None:
+    failed = result(audio_status="synthesis_failed", audio_base64=None)
+    control, play, _, _ = speaking_controller(spoken(0), VoiceCompleted(result=failed))
+
+    outcome = control.interact(True)
+
+    assert len(play.played) == 1 and outcome.feedback is Feedback.NO_AUDIO
 
 
 TWO_SENTENCES = "Primeira frase completa aqui. Segunda frase também completa."

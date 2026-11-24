@@ -16,6 +16,7 @@ from neoson_contracts.events.v1.robot import (
     VoiceCompleted,
     VoiceEvent,
     VoiceFailed,
+    VoiceSpeech,
 )
 from neoson_robot.client import GatewayError, _error_from
 
@@ -51,10 +52,18 @@ def check_audio(data: bytes) -> None:
 def response_audio(result: VoiceResponse) -> bytes | None:
     if result.audio_status != "ready" or result.audio_base64 is None:
         return None
-    if len(result.audio_base64) > 4 * ((MAX_AUDIO_BYTES + 2) // 3):
+    return _decode(result.audio_base64)
+
+
+def speech_audio(event: VoiceSpeech) -> bytes:
+    return _decode(event.audio_base64)
+
+
+def _decode(encoded: str) -> bytes:
+    if len(encoded) > 4 * ((MAX_AUDIO_BYTES + 2) // 3):
         raise GatewayError("Resposta de áudio acima do limite.")
     try:
-        raw = base64.b64decode(result.audio_base64, validate=True)
+        raw = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error):
         raise GatewayError("Resposta de áudio inválida.") from None
     check_audio(raw)
@@ -72,6 +81,8 @@ class HttpVoiceGateway:
     ) -> Iterator[VoiceEvent]:
         check_audio(audio)
         headers = {"Content-Type": "audio/wav", "X-Neoson-Activation": "explicit"}
+        # Pede a resposta frase a frase; gateway antigo ignora e manda o áudio no fim.
+        headers["X-Neoson-Speech"] = "stream"
         headers["X-Neoson-Request-Id"] = str(uuid4())
         headers["X-Neoson-Request-Time"] = str(int(time()))
         if self.token:
@@ -123,7 +134,10 @@ class HttpVoiceGateway:
                         except ValueError:
                             raise GatewayError("Evento de voz inválido.") from None
                         terminal = isinstance(event, (VoiceCompleted, VoiceFailed))
+                        # O prazo é do servidor: tocar a frase não consome o prazo.
+                        paused = monotonic()
                         yield event
+                        deadline += monotonic() - paused
                     if len(pending) > MAX_FRAME_BYTES:
                         raise GatewayError("Evento de voz acima do limite.")
                 if pending or not terminal:

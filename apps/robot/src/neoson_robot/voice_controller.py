@@ -14,9 +14,10 @@ from neoson_contracts.events.v1.robot import (
     VoiceEvent,
     VoiceFailed,
     VoiceProgress,
+    VoiceSpeech,
 )
 from neoson_robot.client import GatewayError
-from neoson_robot.voice_client import check_audio, response_audio
+from neoson_robot.voice_client import check_audio, response_audio, speech_audio
 
 
 class Feedback(StrEnum):
@@ -151,11 +152,18 @@ class VoiceController:
             self._stream = self.gateway.events(
                 audio, self.session_id, self.capture.simulated
             )
+            played = False
             for event in self._stream:
                 if stop():
                     raise Cancelled
                 if isinstance(event, VoiceProgress):
                     self._show(RobotState(event.state))
+                elif isinstance(event, VoiceSpeech):
+                    # Toca já; o servidor segue sintetizando as próximas frases.
+                    sentence = speech_audio(event)
+                    self._show(RobotState.SPEAKING)
+                    self.playback.play(sentence, stop)
+                    played = True
                 elif isinstance(event, VoiceFailed):
                     raise GatewayError(
                         "Falha no processamento de voz.", event.status_code
@@ -184,7 +192,8 @@ class VoiceController:
                 else Feedback.ERROR
                 if result.status == "failed"
                 else Feedback.NO_AUDIO
-                if media is None
+                if not (played or media is not None)
+                or result.audio_status not in ("ready", "streamed")
                 else Feedback.SIMULATED
                 if result.simulated
                 else Feedback.NONE

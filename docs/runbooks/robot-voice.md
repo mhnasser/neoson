@@ -107,6 +107,20 @@ evento terminal error. Buffer de progresso limitado pode descartar estados inter
 resultado/erro final é mantido. O cliente limita frames/bytes/prazo e exige terminal único.
 Stream truncado, duplicado ou áudio inválido não provocam reprodução. Não há retry automático.
 
+### Resposta frase a frase
+
+Com o cabeçalho `X-Neoson-Speech: stream` (o Robot sempre manda), o gateway fala
+enquanto o modelo escreve: cada frase sintetizada vira um evento `speech`
+(`index` crescente, `audio_base64` WAV 16 kHz) antes do `result`, que chega com
+`audio_status: "streamed"` e sem áudio. O Robot toca cada frase assim que chega,
+na ordem, mostrando `Falando`; o servidor segue sintetizando as próximas enquanto
+isso. O tempo de reprodução não conta no prazo do cliente, que vale só para a
+espera pelo servidor. Sem o cabeçalho, ou com gateway antigo, o áudio vem inteiro
+no `result`, como antes. Frases muito curtas ("Claro!") se juntam à seguinte;
+frase longa sem ponto é cortada na vírgula. O total falado segue os limites de
+caracteres e de duração da voz; falha de síntese no meio para a fala e mantém o
+texto (`synthesis_failed`/`synthesis_timeout`, aviso de sem áudio no Robot).
+
 Uma interação por instância do controlador. Cancelamento fecha stream e para dispositivos;
 o servidor cancela o trabalho associado e libera a admissão. Callback de cancelamento é
 observado entre etapas/eventos; leitura bloqueante pode aguardar timeout de transporte
