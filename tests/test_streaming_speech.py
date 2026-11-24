@@ -243,3 +243,24 @@ def test_without_sink_pipeline_is_unchanged() -> None:
 
     assert engine.received[0].on_text is None
     assert result.audio is not None and result.audio_status == "ready"
+
+
+def test_stalled_sink_cannot_hold_the_voice_slot() -> None:
+    sentences = [f"Frase número {n} com bastante conteúdo aqui. " for n in range(2)]
+    speech = Speech()
+    engine = Engine(speech, sentences)
+    pipeline = VoicePipeline(engine, speech, speech, VoiceLimits(timeout_seconds=0.3))
+
+    async def stalled(index: int, wav: bytes) -> None:
+        await asyncio.Event().wait()  # cliente que parou de ler o stream
+
+    async def scenario() -> tuple[VoiceResult, VoiceResult]:
+        first = await asyncio.wait_for(
+            pipeline.process(audio, None, "dono", on_speech=stalled), 2
+        )
+        return first, await pipeline.process(audio, None, "dono")
+
+    first, second = asyncio.run(scenario())
+
+    assert first.audio_status == "synthesis_timeout"
+    assert second.audio is not None

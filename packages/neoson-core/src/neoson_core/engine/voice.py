@@ -273,7 +273,15 @@ class _Streamer:
                 self.seconds = limits.max_output_seconds
                 continue
             self.seconds += clip.seconds
-            await self.sink(self.index, clip.wav)
+            try:
+                # Cliente que parou de ler não pode prender a vaga de voz além do prazo.
+                await asyncio.wait_for(
+                    self.sink(self.index, clip.wav),
+                    timeout=max(self.deadline - monotonic(), 0),
+                )
+            except TimeoutError:
+                self.status = "synthesis_timeout"
+                continue
             self.index += 1
 
 
