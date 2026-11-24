@@ -225,15 +225,10 @@ def build_voice(settings: ServerSettings, engine: Engine) -> VoicePipeline | Non
     if tts_provider == "piper":
         if settings.piper_model is None:
             raise ConfigError("NEOSON_PIPER_MODEL é obrigatório para TTS Piper.")
-        command = (
-            [str(settings.piper_python), "-m", "piper"]
-            if settings.piper_python
-            else ["piper"]
-        )
         try:
             synthesizer = PiperSpeech(
                 settings.piper_model,
-                command=command,
+                python=str(settings.piper_python or "python3"),
                 timeout_seconds=settings.voice_timeout_seconds,
                 length_scale=factor,
                 max_speech_chars=settings.voice_max_speech_chars,

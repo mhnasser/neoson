@@ -1,6 +1,8 @@
 import asyncio
 import io
 import json
+import os
+import sys
 import wave
 from pathlib import Path
 from typing import Any
@@ -13,6 +15,7 @@ from pydantic import SecretStr
 from neoson_core.engine import EchoEngine
 from neoson_core.engine.voice import VoiceLimits, VoicePipeline, pcm_wav, read_wav
 from neoson_core.infrastructure.config import ServerSettings
+from neoson_core.providers import piper_speech
 from neoson_core.providers.openai_speech import OpenAISpeech
 from neoson_core.providers.piper_speech import PiperError, PiperSpeech
 from neoson_core.providers.speech_effects import EffectSynthesizer
@@ -29,124 +32,130 @@ def model(tmp_path: Path) -> Path:
     return path
 
 
-class Input:
-    def __init__(self) -> None:
-        self.data = b""
-        self.closed = False
-
-    def write(self, data: bytes) -> None:
-        self.data += data
-
-    async def drain(self) -> None:
-        pass
-
-    def close(self) -> None:
-        self.closed = True
-
-
-class Output:
-    def __init__(self, raw: bytes, delay: float) -> None:
-        self.raw, self.delay = raw, delay
-
-    async def read(self, size: int) -> bytes:
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        data, self.raw = self.raw[:size], self.raw[size:]
-        return data
+# Faz o papel do Piper: mesmo protocolo (linha JSON → tamanho + PCM), 1 s de áudio.
+FAKE_HELPER = """
+import json, struct, sys, time
+rate = json.load(open(sys.argv[1] + ".json"))["audio"]["sample_rate"]
+out = sys.stdout.buffer
+for line in sys.stdin.buffer:
+    text = json.loads(line)["text"]
+    if text.startswith("__morre__"):
+        sys.exit(1)
+    if text.startswith("__trava__"):
+        time.sleep(30)
+    if text.startswith("__enorme__"):
+        out.write(struct.pack("<I", 10**8))
+        out.flush()
+        continue
+    pcm = b"" if text.startswith("__vazio__") else b"\\x01\\x00" * rate
+    if text.startswith("__impar__"):
+        pcm = b"\\x00" * 3
+    out.write(struct.pack("<I", len(pcm)) + pcm)
+    out.flush()
+"""
 
 
-class Process:
-    def __init__(self, raw: bytes, code: int = 0, delay: float = 0) -> None:
-        self.stdin, self.stdout = Input(), Output(raw, delay)
-        self.returncode: int | None = None
-        self.code, self.killed = code, False
+@pytest.fixture
+def fake_piper(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
+    monkeypatch.setattr(piper_speech, "HELPER", FAKE_HELPER)
+    spawned: list[tuple[Any, ...]] = []
+    real = asyncio.create_subprocess_exec
 
-    async def wait(self) -> int:
-        if self.returncode is None:
-            self.returncode = self.code
-        return self.returncode
+    async def spy(*args: Any, **kwargs: Any) -> Any:
+        spawned.append(args)
+        assert kwargs["stderr"] == asyncio.subprocess.DEVNULL
+        assert "shell" not in kwargs
+        return await real(*args, **kwargs)
 
-    def kill(self) -> None:
-        self.killed, self.returncode = True, -9
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+    return spawned
 
-    async def communicate(self) -> tuple[bytes, None]:
-        return b"", None
+
+def piper(model: Path, **options: Any) -> PiperSpeech:
+    return PiperSpeech(model, python=sys.executable, **options)
+
+
+def pid(speech: PiperSpeech) -> int:
+    assert speech._process is not None
+    return speech._process.pid
 
 
 @pytest.mark.parametrize("rate", [16000, 22050, 48000])
-def test_piper_uses_private_stdin_and_resamples_the_model_rate(
-    model: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    rate: int,
+def test_one_helper_serves_every_sentence_and_audio_is_resampled(
+    model: Path, fake_piper: list[tuple[Any, ...]], rate: int
 ) -> None:
     Path(str(model) + ".json").write_text(json.dumps({"audio": {"sample_rate": rate}}))
-    process = Process(b"\x01\x00" * rate)
-    seen: list[tuple[Any, ...]] = []
+    speech = piper(model)
 
-    async def spawn(*args: Any, **kwargs: Any) -> Process:
-        seen.append(args)
-        assert kwargs["stderr"] == asyncio.subprocess.DEVNULL
-        assert "shell" not in kwargs
-        return process
+    async def run() -> list[tuple[bytes, int]]:
+        try:
+            return [(await speech.synthesize(PRIVATE), pid(speech)) for _ in range(2)]
+        finally:
+            await speech._kill()
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
-    wav = asyncio.run(PiperSpeech(model).synthesize(PRIVATE))
-    assert read_wav(wav, VoiceLimits()).seconds == pytest.approx(1)
-    with wave.open(io.BytesIO(wav)) as source:
-        assert (
-            source.getframerate(),
-            source.getnchannels(),
-            source.getsampwidth(),
-        ) == (16000, 1, 2)
-    assert PRIVATE not in " ".join(str(arg) for arg in seen[0])
-    assert process.stdin.data == (PRIVATE + "\n").encode()
-    assert process.stdin.closed and not process.killed
+    (first, first_pid), (second, second_pid) = asyncio.run(run())
+
+    assert first_pid == second_pid and len(fake_piper) == 1
+    for wav in (first, second):
+        assert read_wav(wav, VoiceLimits()).seconds == pytest.approx(1)
+        with wave.open(io.BytesIO(wav)) as source:
+            assert (
+                source.getframerate(),
+                source.getnchannels(),
+                source.getsampwidth(),
+            ) == (16000, 1, 2)
+    assert PRIVATE not in " ".join(str(arg) for arg in fake_piper[0])
+    assert fake_piper[0][-2:] == (str(model), "1")
 
 
-@pytest.mark.parametrize(
-    "raw,code",
-    [(b"", 0), (b"\x00", 0), (b"\x00\x00", 2), (b"\x00\x00" * 22051, 0)],
-    ids=["empty", "odd", "nonzero", "limit"],
-)
-def test_piper_errors_and_output_limit_do_not_expose_text(
-    model: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    raw: bytes,
-    code: int,
+@pytest.mark.parametrize("bad", ["__vazio__", "__impar__", "__enorme__", "__morre__"])
+def test_bad_frames_fail_safely_and_the_next_sentence_gets_a_new_helper(
+    model: Path, fake_piper: list[tuple[Any, ...]], bad: str
 ) -> None:
-    process = Process(raw, code)
+    speech = piper(model)
 
-    async def spawn(*args: Any, **kwargs: Any) -> Process:
-        return process
+    async def run() -> tuple[str, bytes]:
+        try:
+            await speech.synthesize("aquecer")
+            with pytest.raises(PiperError) as caught:
+                await speech.synthesize(bad + " " + PRIVATE)
+            return str(caught.value), await speech.synthesize("depois")
+        finally:
+            await speech._kill()
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
-    with pytest.raises(PiperError) as caught:
-        asyncio.run(PiperSpeech(model, max_output_seconds=1).synthesize(PRIVATE))
-    assert PRIVATE not in str(caught.value)
+    message, after = asyncio.run(run())
+
+    assert PRIVATE not in message
+    assert read_wav(after, VoiceLimits()).seconds == pytest.approx(1)
+    assert len(fake_piper) == 2
 
 
-def test_timeout_and_cancellation_kill_the_child(
-    model: Path, monkeypatch: pytest.MonkeyPatch
+def test_helper_is_recreated_after_crash_timeout_and_cancel(
+    model: Path, fake_piper: list[tuple[Any, ...]]
 ) -> None:
-    processes: list[Process] = []
+    speech = piper(model, timeout_seconds=1)
 
-    async def spawn(*args: Any, **kwargs: Any) -> Process:
-        processes.append(Process(b"", delay=10))
-        return processes[-1]
+    async def run() -> None:
+        try:
+            await speech.synthesize("aquecer")
+            stuck = speech._process
+            with pytest.raises(TimeoutError):
+                await speech.synthesize("__trava__")
+            assert stuck is not None and stuck.returncode is not None
+            await speech.synthesize("depois do prazo")
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
-    with pytest.raises(TimeoutError):
-        asyncio.run(PiperSpeech(model, timeout_seconds=0.01).synthesize(PRIVATE))
+            task = asyncio.create_task(speech.synthesize("__trava__"))
+            await asyncio.sleep(0.3)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await speech.synthesize("depois do cancelamento")
+        finally:
+            await speech._kill()
 
-    async def cancel() -> None:
-        task = asyncio.create_task(PiperSpeech(model).synthesize(PRIVATE))
-        await asyncio.sleep(0.01)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+    asyncio.run(run())
 
-    asyncio.run(cancel())
-    assert len(processes) == 2 and all(process.killed for process in processes)
+    assert len(fake_piper) == 3
 
 
 @pytest.mark.parametrize("rate", [None, "22050", True, 100000])
@@ -176,33 +185,29 @@ def test_composition_combines_openai_stt_with_piper_and_the_chosen_effect(
     assert pipeline.synthesizer.factor == 1.45
     assert isinstance(pipeline.synthesizer.base, PiperSpeech)
     assert pipeline.synthesizer.base.scale == 1.45
-    assert pipeline.synthesizer.base.command[-2:] == ("-m", "piper")
+    assert pipeline.synthesizer.base.python == str(Path("/opt/piper/python"))
+    unset = settings.model_copy(update={"piper_python": None})
+    default = build_voice(unset, EchoEngine())
+    assert default is not None and isinstance(default.synthesizer, EffectSynthesizer)
+    assert isinstance(default.synthesizer.base, PiperSpeech)
+    assert default.synthesizer.base.python == "python3"
 
 
-def test_missing_process_has_a_sanitized_error(
-    model: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async def missing(*args: Any, **kwargs: Any) -> Process:
-        raise FileNotFoundError(PRIVATE)
-
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", missing)
+def test_missing_process_has_a_sanitized_error(model: Path) -> None:
+    speech = PiperSpeech(model, python="python-que-nao-existe-" + PRIVATE)
     with pytest.raises(PiperError) as caught:
-        asyncio.run(PiperSpeech(model).synthesize(PRIVATE))
+        asyncio.run(speech.synthesize(PRIVATE))
     assert PRIVATE not in str(caught.value)
 
 
 def test_openai_transcription_and_piper_synthesis_work_together(
-    model: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    model: Path, fake_piper: list[tuple[Any, ...]]
 ) -> None:
     requests: list[str] = []
 
     def reply(request: httpx2.Request) -> httpx2.Response:
         requests.append(request.url.path)
         return httpx2.Response(200, json={"text": "Olá, NeoSon"})
-
-    async def spawn(*args: Any, **kwargs: Any) -> Process:
-        return Process(b"\x01\x00" * 22050)
 
     async def run() -> None:
         client = AsyncOpenAI(
@@ -217,14 +222,39 @@ def test_openai_transcription_and_piper_synthesis_work_together(
         async def load() -> bytes:
             return pcm_wav(b"\x00\x00" * 3200)
 
+        speech = piper(model)
         try:
-            pipeline = VoicePipeline(EchoEngine(), transcriber, PiperSpeech(model))
+            pipeline = VoicePipeline(EchoEngine(), transcriber, speech)
             result = await pipeline.process(load, None, "test")
             assert result.audio is not None and result.audio.seconds == pytest.approx(1)
             assert result.audio_status == "ready"
         finally:
             await client.close()
+            await speech._kill()
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     asyncio.run(run())
     assert requests == ["/v1/audio/transcriptions"]
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEOSON_TEST_PIPER_PYTHON")
+    or not os.environ.get("NEOSON_TEST_PIPER_MODEL"),
+    reason="Piper real só na máquina com o Python do Piper e um modelo.",
+)
+def test_real_piper_helper_when_available() -> None:
+    speech = PiperSpeech(
+        Path(os.environ["NEOSON_TEST_PIPER_MODEL"]),
+        python=os.environ["NEOSON_TEST_PIPER_PYTHON"],
+        timeout_seconds=60,
+    )
+
+    async def run() -> list[float]:
+        try:
+            return [
+                read_wav(await speech.synthesize(text), VoiceLimits()).seconds
+                for text in ("Olá, tudo bem?", "Amanhã vai fazer sol.")
+            ]
+        finally:
+            await speech._kill()
+
+    assert all(seconds > 0.3 for seconds in asyncio.run(run()))

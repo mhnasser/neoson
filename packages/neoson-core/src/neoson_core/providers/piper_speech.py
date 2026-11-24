@@ -1,14 +1,34 @@
-"""Piper local via stdin/stdout; texto não entra em argumentos, arquivos ou logs."""
+"""Piper local num processo vivo; texto só pelo stdin, nunca em argumentos ou logs.
+
+O modelo carrega uma vez e cada frase sai em décimos de segundo, em vez de abrir um
+processo e recarregar o modelo a cada síntese.
+"""
 
 import asyncio
 import json
 import math
-from collections.abc import Sequence
+import struct
 from contextlib import suppress
 from pathlib import Path
 
 from neoson_core.engine.voice import pcm_wav, speakable
 from neoson_core.providers.speech_effects import resample_pcm
+
+# Roda no Python que tem `piper-tts`: uma linha JSON por frase no stdin; no stdout,
+# 4 bytes com o tamanho e depois o PCM16 na taxa do modelo.
+HELPER = """
+import json, struct, sys
+from piper import PiperVoice, SynthesisConfig
+voice = PiperVoice.load(sys.argv[1])
+config = SynthesisConfig(length_scale=float(sys.argv[2]))
+out = sys.stdout.buffer
+for line in sys.stdin.buffer:
+    text = json.loads(line)["text"]
+    chunks = voice.synthesize(text, syn_config=config)
+    pcm = b"".join(chunk.audio_int16_bytes for chunk in chunks)
+    out.write(struct.pack("<I", len(pcm)) + pcm)
+    out.flush()
+"""
 
 
 class PiperError(RuntimeError):
@@ -20,19 +40,14 @@ class PiperSpeech:
         self,
         model: Path,
         *,
-        command: Sequence[str] = ("piper",),
+        python: str = "python3",
         timeout_seconds: float = 30,
         length_scale: float = 1,
         max_speech_chars: int = 400,
         max_output_seconds: float = 30,
     ) -> None:
         try:
-            if (
-                not model.is_file()
-                or isinstance(command, str)
-                or not command
-                or not all(command)
-            ):
+            if not model.is_file() or not isinstance(python, str) or not python:
                 raise ValueError
             with Path(str(model) + ".json").open("rb") as file:
                 raw = file.read(1048577)
@@ -53,60 +68,62 @@ class PiperSpeech:
             and 1 <= max_speech_chars <= 8000
         ):
             raise PiperError("Piper: limites inválidos.")
-        self.model, self.command, self.rate = model, tuple(command), rate
+        self.model, self.python, self.rate = model, python, rate
         self.timeout, self.scale, self.max_chars = (
             timeout_seconds,
             length_scale,
             max_speech_chars,
         )
         self.max_bytes = int(rate * max_output_seconds * length_scale) * 2
+        # shortcut: sem pré-aquecimento, a 1ª fala depois de subir o gateway paga ~1 s
+        # de carga do modelo; aquecer na subida se isso incomodar.
+        self._process: asyncio.subprocess.Process | None = None
+        self._lock = asyncio.Lock()
 
     async def synthesize(self, text: str) -> bytes:
-        process = None
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *self.command,
-                "--model",
+        async with self._lock:
+            try:
+                raw = await asyncio.wait_for(
+                    self._request(speakable(text, self.max_chars)), self.timeout
+                )
+            except BaseException as error:
+                # Pedido pela metade deixa o stdout no meio de um quadro: recomeçar.
+                await self._kill()
+                # TimeoutError herda de OSError: o prazo sobe como prazo.
+                if not isinstance(error, TimeoutError) and isinstance(
+                    error, (OSError, ValueError, EOFError)
+                ):
+                    raise PiperError(
+                        "Piper: processo indisponível ou áudio inválido."
+                    ) from None
+                raise
+        return pcm_wav(await asyncio.to_thread(resample_pcm, raw, self.rate))
+
+    async def _request(self, text: str) -> bytes:
+        if self._process is None or self._process.returncode is not None:
+            self._process = await asyncio.create_subprocess_exec(
+                self.python,
+                "-c",
+                HELPER,
                 str(self.model),
-                "--output-raw",
-                "--length-scale",
                 str(self.scale),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
+        process = self._process
+        assert process.stdin is not None and process.stdout is not None
+        process.stdin.write((json.dumps({"text": text}) + "\n").encode("utf-8"))
+        await process.stdin.drain()
+        (size,) = struct.unpack("<I", await process.stdout.readexactly(4))
+        if not 0 < size <= self.max_bytes or size % 2:
+            raise PiperError("Piper: áudio vazio, inválido ou acima do limite.")
+        return await process.stdout.readexactly(size)
 
-            async def collect() -> bytes:
-                assert (
-                    process is not None
-                    and process.stdin is not None
-                    and process.stdout is not None
-                )
-                process.stdin.write(
-                    (speakable(text, self.max_chars) + "\n").encode("utf-8")
-                )
-                await process.stdin.drain()
-                process.stdin.close()
-                raw = bytearray()
-                while chunk := await process.stdout.read(8192):
-                    if len(raw) + len(chunk) > self.max_bytes:
-                        raise PiperError("Piper: áudio acima do limite.")
-                    raw.extend(chunk)
-                if await process.wait() != 0 or not raw or len(raw) % 2:
-                    raise PiperError("Piper: síntese falhou.")
-                return bytes(raw)
-
-            raw = await asyncio.wait_for(collect(), self.timeout)
-            return pcm_wav(await asyncio.to_thread(resample_pcm, raw, self.rate))
-        except TimeoutError:
-            raise
-        except (OSError, ValueError):
-            raise PiperError(
-                "Piper: processo indisponível ou áudio inválido."
-            ) from None
-        finally:
-            if process is not None and process.returncode is None:
-                with suppress(ProcessLookupError):
-                    process.kill()
-                with suppress(TimeoutError):
-                    await asyncio.wait_for(process.communicate(), 2)
+    async def _kill(self) -> None:
+        process, self._process = self._process, None
+        if process is not None and process.returncode is None:
+            with suppress(ProcessLookupError):
+                process.kill()
+            with suppress(TimeoutError):
+                await asyncio.wait_for(process.communicate(), 2)

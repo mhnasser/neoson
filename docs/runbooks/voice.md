@@ -151,7 +151,7 @@ NEOSON_VOICE_PITCH_FACTOR=1.45
 Reutilize sua instalação do Piper e os modelos já baixados. O modelo precisa do
 arquivo `.onnx.json` ao lado do `.onnx`; a taxa é lida de `audio.sample_rate`.
 `NEOSON_PIPER_PYTHON` aponta para o Python que tem `piper-tts` instalado, inclusive
-se estiver fora do venv do NeoSon. Vazio, usa `piper` do PATH. Não é preciso
+se estiver fora do venv do NeoSon. Vazio, usa `python3`. Não é preciso
 instalar Piper/modelos no workspace ou copiá-los para o Git. No Windows, use
 caminhos locais equivalentes no arquivo privado. Modelos precisam estar no
 equipamento da síntese; o cliente Robot só recebe o WAV final.
@@ -165,9 +165,13 @@ mistura de 30% com seno de 35 Hz, filtro pente de 6 ms/feedback 0,45 e pico a
 a duração de outro backend, ele também precisa produzir a fala alongada antes
 do pitch. `fake` continua apenas uma simulação, sem qualidade vocal real.
 
-O subprocesso recebe texto por stdin, nunca em argumentos/arquivos. stdout é PCM
-limitado por duração/taxa, stderr não é exposto, e timeout/cancelamento encerra
-o processo. Não há shell ou fallback automático para outra API. Entrada de
+O Piper roda num processo vivo: esse Python executa um script embutido que carrega
+o modelo uma vez e atende uma frase por vez (décimos de segundo por frase, contra
+~1 s para abrir o processo e carregar o modelo). A primeira fala depois de subir o
+gateway paga essa carga. O processo recebe texto por stdin, nunca em
+argumentos/arquivos; stdout traz o tamanho e o PCM, limitado por duração/taxa;
+stderr não é exposto. Timeout, cancelamento, quadro inválido ou saída do processo
+o encerram, e a próxima frase abre outro. Não há shell ou fallback automático para outra API. Entrada de
 8–48 kHz é convertida linearmente para WAV PCM16 mono/16 kHz, sem dependência
 de áudio adicional. Conversão/efeito são adequados para fala, não masterização.
 O texto completo da resposta permanece no JSON/histórico; só a fala recebe
