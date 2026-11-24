@@ -7,20 +7,27 @@ import re
 import struct
 import wave
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from time import monotonic
 from typing import Literal, Protocol
 from uuid import UUID
 
-from neoson_core.engine.conversation import Engine, RunResult, UserMessage
+from neoson_core.engine.conversation import Engine, RunResult, RunStatus, UserMessage
 from neoson_core.engine.persistence import SessionNotFound
 
 SAMPLE_RATE = 16000
 # Grafia só para a síntese: o nome se pronuncia "Néuson"; "ss" evita que o "s" soe "z".
 # O texto continua "NeoSon".
 PRONUNCIATIONS = ((re.compile(r"\bneo ?son\b", re.IGNORECASE), "Néusson"),)
-AudioStatus = Literal["ready", "synthesis_timeout", "synthesis_failed", "text_too_long"]
+AudioStatus = Literal[
+    "ready", "streamed", "synthesis_timeout", "synthesis_failed", "text_too_long"
+]
 VoiceActivity = Literal["transcribing", "thinking", "using_tool"]
+# Recebe cada frase sintetizada (WAV 16 kHz), na ordem, com índice crescente.
+SpeechSink = Callable[[int, bytes], Awaitable[None]]
+# Fim de frase seguido de espaço (não corta "3.5") ou quebra de linha.
+SENTENCE_END = re.compile(r"[.!?…](?=\s)|\n")
 
 
 class InvalidAudio(ValueError):
@@ -164,6 +171,112 @@ def speakable(text: str, limit: int) -> str:
     return (head[:space] if space > 0 else head[:-1]).rstrip(",;:") + "…"
 
 
+class SentenceSplitter:
+    """Junta os pedaços do modelo e solta frases inteiras para a síntese."""
+
+    def __init__(self, min_chars: int = 20, max_chars: int = 200) -> None:
+        self.min_chars, self.max_chars = min_chars, max_chars
+        self._buffer = ""
+
+    def feed(self, text: str) -> list[str]:
+        self._buffer += text
+        sentences: list[str] = []
+        while cut := self._cut():
+            sentences.append(self._buffer[:cut].strip())
+            self._buffer = self._buffer[cut:]
+        return sentences
+
+    def flush(self) -> list[str]:
+        rest, self._buffer = self._buffer.strip(), ""
+        return [rest] if rest else []
+
+    def _cut(self) -> int:
+        # Frase curta ("Claro!", "1.") junta com a próxima: entonação melhor.
+        for match in SENTENCE_END.finditer(self._buffer):
+            if len(self._buffer[: match.end()].strip()) >= self.min_chars:
+                return match.end()
+        if len(self._buffer) <= self.max_chars:
+            return 0
+        head = self._buffer[: self.max_chars]
+        cut = max(head.rfind(mark) for mark in ",;:")
+        if cut <= 0:
+            cut = head.rfind(" ")
+        return cut + 1 if cut > 0 else self.max_chars
+
+
+class _Streamer:
+    """Sintetiza as frases em ordem, numa tarefa própria, e entrega cada WAV."""
+
+    def __init__(
+        self, pipeline: "VoicePipeline", sink: SpeechSink, deadline: float
+    ) -> None:
+        self.pipeline, self.sink, self.deadline = pipeline, sink, deadline
+        self.splitter = SentenceSplitter()
+        self.queue: asyncio.Queue[str | None] = asyncio.Queue()
+        self.budget = pipeline.max_speech_chars
+        self.queued = self.finished = False
+        self.characters = self.index = 0
+        self.seconds = 0.0
+        self.status: AudioStatus = "streamed"
+        self.task = asyncio.create_task(self._run())
+
+    def text(self, piece: str) -> None:
+        for sentence in self.splitter.feed(piece):
+            self._put(sentence)
+
+    def flush(self) -> None:
+        for sentence in self.splitter.flush():
+            self._put(sentence)
+
+    def say(self, text: str) -> None:
+        self.text(text)
+        self.flush()
+
+    def _put(self, sentence: str) -> None:
+        spoken = for_speech(" ".join(sentence.split()))
+        if self.budget <= 0 or not spoken:
+            return
+        if len(spoken) > self.budget:
+            # Frase cortada encerra a fala: nada de pedaços soltos depois dela.
+            spoken, self.budget = speakable(spoken, self.budget), 0
+        self.budget -= len(spoken)
+        self.queued = True
+        self.queue.put_nowait(spoken)
+
+    async def finish(self) -> AudioStatus:
+        self.flush()
+        self.queue.put_nowait(None)
+        await self.task
+        self.finished = True
+        return self.status
+
+    async def _run(self) -> None:
+        limits = self.pipeline.limits
+        while (text := await self.queue.get()) is not None:
+            if self.status != "streamed" or self.seconds >= limits.max_output_seconds:
+                continue
+            self.characters += len(text)
+            try:
+                wav = await asyncio.wait_for(
+                    self.pipeline.synthesizer.synthesize(text),
+                    timeout=max(self.deadline - monotonic(), 0),
+                )
+                clip = read_wav(wav, limits, limits.max_output_seconds)
+            except TimeoutError:
+                self.status = "synthesis_timeout"
+                continue
+            except Exception:
+                self.status = "synthesis_failed"
+                continue
+            if self.seconds + clip.seconds > limits.max_output_seconds:
+                # Limite total de fala: para aqui, como `speakable` corta o texto.
+                self.seconds = limits.max_output_seconds
+                continue
+            self.seconds += clip.seconds
+            await self.sink(self.index, clip.wav)
+            self.index += 1
+
+
 @dataclass(frozen=True, slots=True)
 class VoiceResult:
     result: RunResult = field(repr=False)
@@ -230,12 +343,15 @@ class VoicePipeline:
         session_id: UUID | None,
         principal: str,
         on_activity: Callable[[VoiceActivity], None] | None = None,
+        on_speech: SpeechSink | None = None,
     ) -> VoiceResult:
+        """Com `on_speech`, fala frase a frase enquanto o modelo escreve."""
         if self._slots.locked():
             raise SpeechUnavailable("voice_busy")
         await self._slots.acquire()
         deadline = monotonic() + self.limits.timeout_seconds
         result: RunResult | None = None
+        streamer: _Streamer | None = None
         seconds, characters, complete = 0.0, 0, False
         try:
             try:
@@ -266,6 +382,8 @@ class VoicePipeline:
             try:
                 if on_activity:
                     on_activity("thinking")
+                if on_speech is not None:
+                    streamer = _Streamer(self, on_speech, deadline)
                 result = await asyncio.wait_for(
                     self.engine.run(
                         UserMessage(
@@ -274,6 +392,7 @@ class VoicePipeline:
                             channel="voice",
                             principal=principal,
                             on_activity=on_activity,
+                            on_text=None if streamer is None else streamer.text,
                         )
                     ),
                     timeout=max(deadline - monotonic(), 0),
@@ -285,6 +404,12 @@ class VoicePipeline:
             except Exception:
                 raise SpeechUnavailable("voice_execution_failed") from None
             complete = True
+            if streamer is not None:
+                streamer.flush()
+                # Modelo sem streaming, ou texto que não veio dele (aprovação, falha).
+                if not streamer.queued or result.status is not RunStatus.COMPLETED:
+                    streamer.say(result.text)
+                return VoiceResult(result, audio_status=await streamer.finish())
             if len(result.text) > self.limits.max_text_chars:
                 return VoiceResult(result, audio_status="text_too_long")
             speech_text = speakable(for_speech(result.text), self.max_speech_chars)
@@ -302,6 +427,15 @@ class VoicePipeline:
                 return VoiceResult(result, audio_status="synthesis_failed")
             return VoiceResult(result, output)
         finally:
+            if streamer is not None:
+                if not streamer.task.done():
+                    streamer.task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await streamer.task
+                characters = streamer.characters
+                complete = (
+                    complete and streamer.finished and streamer.status == "streamed"
+                )
             try:
                 if result is not None and self.record_usage is not None:
                     await self.record_usage(
