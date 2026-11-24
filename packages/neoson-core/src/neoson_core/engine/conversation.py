@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Literal, Protocol
 from uuid import UUID
 
-from neoson_core.engine.llm import Usage
+from neoson_core.engine.llm import TextObserver, Usage
 
 EngineActivity = Literal["thinking", "using_tool"]
 ActivityObserver = Callable[[EngineActivity], None]
@@ -19,6 +19,7 @@ class UserMessage:
     on_activity: ActivityObserver | None = field(
         default=None, repr=False, compare=False
     )
+    on_text: TextObserver | None = field(default=None, repr=False, compare=False)
 
 
 class RunStatus(StrEnum):

@@ -1,11 +1,14 @@
 """Porta para modelos de linguagem (§11.1). O motor não conhece o fornecedor."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from neoson_core.engine._validation import frozen_mapping, require_text
 from neoson_core.engine.messages import Message, Role
+
+# Recebe cada pedaço do texto do modelo e "\n" ao fim de uma chamada que falou.
+TextObserver = Callable[[str], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +33,7 @@ class LLMRequest:
     messages: tuple[Message, ...]
     tools: tuple[ToolSpec, ...] = ()
     max_output_tokens: int | None = None
+    on_text: TextObserver | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         require_text(self.model_profile, "LLMRequest.model_profile")

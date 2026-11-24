@@ -307,3 +307,116 @@ def test_errors_distinguish_nothing_sent_from_unknown_usage() -> None:
 
     assert not_sent.value.usage == Usage()
     assert http.value.usage is None and http.value.retryable
+
+
+# --- texto em streaming para quem observa ---
+
+
+def observed(collected: list[str]) -> LLMRequest:
+    return LLMRequest(
+        model_profile="balanced",
+        messages=(Message(role=Role.USER, content="oi"),),
+        on_text=collected.append,
+    )
+
+
+def sse(*events: dict[str, Any]) -> bytes:
+    return b"".join(
+        f"event: {e['type']}\ndata: {json.dumps(e)}\n\n".encode() for e in events
+    )
+
+
+def delta(text: str, sequence: int) -> dict[str, Any]:
+    return {
+        "type": "response.output_text.delta",
+        "item_id": "msg_1",
+        "output_index": 1,
+        "content_index": 0,
+        "delta": text,
+        "logprobs": [],
+        "sequence_number": sequence,
+    }
+
+
+def final(kind: str, body: dict[str, Any], sequence: int) -> dict[str, Any]:
+    return {"type": kind, "response": body, "sequence_number": sequence}
+
+
+class StreamRecorder:
+    def __init__(self, *events: dict[str, Any]) -> None:
+        self.body = sse(*events)
+        self.sent: list[dict[str, Any]] = []
+
+    def __call__(self, http_request: httpx2.Request) -> httpx2.Response:
+        self.sent.append(json.loads(http_request.content))
+        return httpx2.Response(
+            200, content=self.body, headers={"content-type": "text/event-stream"}
+        )
+
+
+GREETING: list[dict[str, Any]] = [
+    {
+        "type": "message",
+        "id": "msg_1",
+        "role": "assistant",
+        "status": "completed",
+        "content": [
+            {"type": "output_text", "text": "Olá, tudo bem?", "annotations": []}
+        ],
+    }
+]
+
+
+def test_streaming_forwards_deltas_and_builds_the_same_response() -> None:
+    recorder = StreamRecorder(
+        delta("Olá", 1),
+        delta(", tudo bem?", 2),
+        final("response.completed", response_body(GREETING), 3),
+    )
+    collected: list[str] = []
+
+    response = asyncio.run(openai_provider(recorder).complete(observed(collected)))
+
+    assert collected == ["Olá", ", tudo bem?", "\n"]
+    assert response.message == Message(role=Role.ASSISTANT, content="Olá, tudo bem?")
+    assert response.usage == Usage(input_tokens=30, output_tokens=7, cached_tokens=12)
+    assert response.model == "modelo-x-2026"
+    assert recorder.sent[0]["stream"] is True and recorder.sent[0]["store"] is False
+
+
+def test_without_observer_request_is_not_streamed() -> None:
+    recorder = Recorder()
+
+    asyncio.run(openai_provider(recorder).complete(request()))
+
+    assert "stream" not in recorder.sent[0]
+
+
+def test_stream_without_final_response_is_retryable_error() -> None:
+    recorder = StreamRecorder(delta("Olá", 1))
+
+    with pytest.raises(LLMError) as caught:
+        asyncio.run(openai_provider(recorder).complete(observed([])))
+
+    assert caught.value.retryable and caught.value.usage is None
+
+
+def test_stream_failed_event_maps_to_llm_error() -> None:
+    failed = response_body([], status="failed")
+    recorder = StreamRecorder(final("response.failed", failed, 1))
+
+    with pytest.raises(LLMError) as caught:
+        asyncio.run(openai_provider(recorder).complete(observed([])))
+
+    assert caught.value.retryable
+    assert caught.value.usage == Usage(30, 7, 12)
+
+
+def test_scripted_provider_emits_reply_text_when_observed() -> None:
+    collected: list[str] = []
+    provider = ScriptedProvider([reply("Oi."), call_tool("calendar_list")])
+
+    asyncio.run(provider.complete(observed(collected)))
+    asyncio.run(provider.complete(observed(collected)))
+
+    assert collected == ["Oi.", "\n"]

@@ -8,6 +8,7 @@ from neoson_core.engine.llm import (
     LLMProvider,
     LLMRequest,
     LLMResponse,
+    TextObserver,
     ToolSpec,
     Usage,
 )
@@ -93,6 +94,7 @@ __all__ = [
     "SkillRef",
     "SkillRegistry",
     "SkillRisk",
+    "TextObserver",
     "ToolCall",
     "ToolCatalog",
     "ToolContext",

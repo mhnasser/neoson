@@ -17,6 +17,7 @@ from neoson_core.engine import (
     LLMResponse,
     Message,
     Role,
+    TextObserver,
     ToolCall,
     ToolSpec,
     Usage,
@@ -27,6 +28,8 @@ _RETRYABLE = (
     openai.RateLimitError,
     openai.InternalServerError,
 )
+# A resposta final do stream chega num destes; o status dela diz como terminou.
+_FINAL_EVENTS = ("response.completed", "response.incomplete", "response.failed")
 
 
 class OpenAIProvider:
@@ -72,34 +75,59 @@ class OpenAIProvider:
         if self._reasoning_effort is not None:
             options["reasoning"] = {"effort": self._reasoning_effort}
 
+        payload = cast(
+            ResponseInputParam,
+            [item for m in request.messages for item in _input_items(m)],
+        )
         try:
-            response = await self._client.responses.create(
-                model=model,
-                input=cast(
-                    ResponseInputParam,
-                    [item for m in request.messages for item in _input_items(m)],
-                ),
-                store=False,
-                **options,
-            )
+            if request.on_text is None:
+                response = await self._client.responses.create(
+                    model=model, input=payload, store=False, **options
+                )
+            else:
+                response = await self._stream(
+                    request.on_text, model=model, input=payload, store=False, **options
+                )
         except openai.APIError as error:
             raise LLMError(
                 f"OpenAI: {type(error).__name__}.",
                 retryable=isinstance(error, _RETRYABLE),
             ) from None
+        return _finish(response)
 
-        usage = _usage(response.usage)
-        try:
-            message = _assistant_message(response.output, response.status)
-        except LLMError as error:
-            # A resposta chegou: o consumo medido entra na conta mesmo sem conteúdo.
+    async def _stream(self, on_text: TextObserver, **arguments: Any) -> Any:
+        """Repassa os pedaços do texto e devolve a resposta final do stream."""
+        response = None
+        spoke = False
+        stream = await self._client.responses.create(stream=True, **arguments)
+        async for event in stream:
+            if event.type == "response.output_text.delta":
+                on_text(event.delta)
+                spoke = True
+            elif event.type in _FINAL_EVENTS:
+                response = event.response
+        if spoke:
+            on_text("\n")
+        if response is None:
             raise LLMError(
-                str(error),
-                retryable=error.retryable,
-                usage=usage if response.usage is not None else None,
-                model=response.model,
-            ) from None
-        return LLMResponse(message=message, usage=usage, model=response.model)
+                "OpenAI: stream terminou sem resposta final.", retryable=True
+            )
+        return response
+
+
+def _finish(response: Any) -> LLMResponse:
+    usage = _usage(response.usage)
+    try:
+        message = _assistant_message(response.output, response.status)
+    except LLMError as error:
+        # A resposta chegou: o consumo medido entra na conta mesmo sem conteúdo.
+        raise LLMError(
+            str(error),
+            retryable=error.retryable,
+            usage=usage if response.usage is not None else None,
+            model=response.model,
+        ) from None
+    return LLMResponse(message=message, usage=usage, model=response.model)
 
 
 def _tool(spec: ToolSpec) -> dict[str, Any]:

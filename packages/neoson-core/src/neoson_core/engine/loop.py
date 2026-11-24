@@ -27,6 +27,7 @@ from neoson_core.engine.llm import (
     LLMProvider,
     LLMRequest,
     LLMResponse,
+    TextObserver,
     Usage,
 )
 from neoson_core.engine.messages import (
@@ -153,6 +154,7 @@ class AgentLoop:
         context = RunContext(session_id=session_id, budget=self._budget)
         run = _Run(context, self._on_state, self._skills, self._delegation_limits)
         run.on_activity = message.on_activity
+        run.on_text = message.on_text
         user = Message(role=Role.USER, content=message.text)
         try:
             text, model = await self._execute(run, message, history, user)
@@ -282,6 +284,7 @@ class AgentLoop:
                         (self._tools.specs() if self._tools else ())
                         + ((DELEGATE_SPEC,) if run.delegation is not None else ())
                     ),
+                    on_text=run.on_text,
                 ),
             )
             messages.append(response.message)
@@ -466,6 +469,7 @@ class _Run:
         self.skills = SkillContext(skills)
         self.pending_actions: list[PendingAction] = []
         self.on_activity: ActivityObserver | None = None
+        self.on_text: TextObserver | None = None
         self._on_state = on_state
         self._notify()
 

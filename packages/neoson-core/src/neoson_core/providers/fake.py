@@ -56,4 +56,7 @@ class ScriptedProvider:
         step = self._script.pop(0)
         if isinstance(step, LLMError):
             raise step
+        if request.on_text and step.message.content:
+            request.on_text(step.message.content)
+            request.on_text("\n")
         return step

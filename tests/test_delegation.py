@@ -664,3 +664,28 @@ def test_usage_recorder_rejects_invalid_delegation_counters(
         )
         with pytest.raises(ValueError, match="delegação"):
             UsageRecorder()(connection, event)
+
+
+def test_loop_passes_text_observer_only_to_main_calls(tmp_path: Path) -> None:
+    provider = ScriptedProvider(
+        [
+            call_tool(DELEGATE, CALL.arguments),
+            reply("Síntese selecionada."),
+            reply("Resposta final."),
+        ]
+    )
+    loop = AgentLoop(
+        provider,
+        RulesRouter("session-bound"),
+        Budget(4, 10),
+        store=SqliteConversationStore(tmp_path / "delegation.db"),
+        delegation_limits=DelegationLimits(),
+    )
+    spoken: list[str] = []
+
+    asyncio.run(loop.run(UserMessage("pedido", on_text=spoken.append)))
+
+    parent, child, last = provider.requests
+    assert parent.on_text is not None and last.on_text is not None
+    assert child.on_text is None
+    assert spoken == ["Resposta final.", "\n"]
