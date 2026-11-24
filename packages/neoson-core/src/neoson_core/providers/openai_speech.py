@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 
 from neoson_core.engine.voice import SAMPLE_RATE, AudioClip, pcm_wav
 from neoson_core.engine.voice import speakable as speakable
+from neoson_core.providers.openai_provider import fresh_client
 
 TTS_SAMPLE_RATE = 24000
 # 30 s de PCM16 a 24 kHz: o Robot não reproduz mais que isso.
@@ -50,8 +51,7 @@ class OpenAISpeech:
         cls, api_key: str, *, timeout_seconds: float, **options: Any
     ) -> "OpenAISpeech":
         """Sem retentativa no SDK: o pipeline já tem prazo e não repete áudio."""
-        client = AsyncOpenAI(api_key=api_key, timeout=timeout_seconds, max_retries=0)
-        return cls(client, **options)
+        return cls(fresh_client(api_key, timeout_seconds, max_retries=0), **options)
 
     async def transcribe(self, audio: AudioClip) -> str:
         try:

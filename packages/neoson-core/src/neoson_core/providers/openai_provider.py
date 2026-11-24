@@ -7,6 +7,7 @@ import json
 from collections.abc import Mapping
 from typing import Any, cast
 
+import httpx2
 import openai
 from openai import AsyncOpenAI
 from openai.types.responses import ResponseInputParam
@@ -32,6 +33,22 @@ _RETRYABLE = (
 _FINAL_EVENTS = ("response.completed", "response.incomplete", "response.failed")
 
 
+def fresh_client(api_key: str, timeout_seconds: float, max_retries: int) -> AsyncOpenAI:
+    """Cliente que abre conexão nova a cada chamada (~0,2 s).
+
+    Na rede da Pi, reaproveitar ou fechar uma conexão ociosa custava ~5 s por chamada,
+    mesmo com expiração curta; sem guardar conexões, a latência volta ao normal.
+    """
+    return AsyncOpenAI(
+        api_key=api_key,
+        timeout=timeout_seconds,
+        max_retries=max_retries,
+        http_client=openai.DefaultAsyncHttpxClient(
+            limits=httpx2.Limits(max_connections=100, max_keepalive_connections=0)
+        ),
+    )
+
+
 class OpenAIProvider:
     def __init__(
         self,
@@ -54,10 +71,11 @@ class OpenAIProvider:
         max_retries: int = 2,
     ) -> "OpenAIProvider":
         """Cria o cliente do SDK aqui, para que só `providers` conheça o fornecedor."""
-        client = AsyncOpenAI(
-            api_key=api_key, timeout=timeout_seconds, max_retries=max_retries
+        return cls(
+            fresh_client(api_key, timeout_seconds, max_retries),
+            models,
+            reasoning_effort,
         )
-        return cls(client, models, reasoning_effort)
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         model = self._models.get(request.model_profile)

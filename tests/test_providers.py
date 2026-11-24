@@ -19,6 +19,7 @@ from neoson_core.engine import (
 )
 from neoson_core.providers.fake import ScriptedProvider, call_tool, reply
 from neoson_core.providers.openai_provider import OpenAIProvider
+from neoson_core.providers.openai_speech import OpenAISpeech
 
 CALENDAR = ToolSpec(
     name="calendar_list",
@@ -420,3 +421,16 @@ def test_scripted_provider_emits_reply_text_when_observed() -> None:
     asyncio.run(provider.complete(observed(collected)))
 
     assert collected == ["Oi.", "\n"]
+
+
+def test_openai_clients_never_keep_idle_connections() -> None:
+    # Na rede da Pi, reaproveitar conexão ociosa custava ~5 s por chamada.
+    provider = OpenAIProvider.from_api_key("chave-de-teste", {"balanced": "m"}, 5)
+    speech = OpenAISpeech.from_api_key(
+        "chave-de-teste", timeout_seconds=5, stt_model="s", tts_model="t", voice="v"
+    )
+
+    for client in (provider._client, speech._client):
+        transport = client._client._transport
+        assert isinstance(transport, httpx2.AsyncHTTPTransport)
+        assert transport._pool._max_keepalive_connections == 0
