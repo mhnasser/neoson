@@ -18,6 +18,7 @@ from neoson_contracts.events.v1.robot import (
     VoiceCompleted,
     VoiceEvent,
     VoiceProgress,
+    VoiceSpeech,
 )
 from neoson_core.engine import AgentLoop, Budget, EchoEngine
 from neoson_core.engine.voice import VoicePipeline
@@ -31,7 +32,7 @@ from neoson_gateway.voice import voice_router
 from neoson_robot.client import GatewayError
 from neoson_robot.fake_devices import FakeCapture, FakeDisplay, FakePlayback, silent_wav
 from neoson_robot.session_state import FileSessionState
-from neoson_robot.voice_client import HttpVoiceGateway
+from neoson_robot.voice_client import HttpVoiceGateway, check_audio
 from neoson_robot.voice_controller import Feedback, VoiceController
 from neoson_robot.voice_main import main
 
@@ -457,6 +458,105 @@ def test_closing_stream_cancels_server_and_releases_admission() -> None:
         await response.body_iterator.aclose()
         await asyncio.wait_for(stopped.wait(), timeout=1)
         pipeline.transcriber = FakeSpeech()
+
+        async def load() -> bytes:
+            return silent_wav()
+
+        assert (await pipeline.process(load, None, "owner")).audio is not None
+
+    asyncio.run(scenario())
+
+
+TWO_SENTENCES = "Primeira frase completa aqui. Segunda frase também completa."
+SPEECH = {"X-Neoson-Speech": "stream"}
+
+
+def speaking_server() -> TestClient:
+    speech = FakeSpeech()
+    engine = AgentLoop(
+        ScriptedProvider([reply(TWO_SENTENCES)]), RulesRouter("balanced"), Budget(3, 5)
+    )
+    pipeline = VoicePipeline(engine, speech, speech, simulated=True)
+    return TestClient(create_app(engine, "test-only", voice=pipeline), headers=AUTH)
+
+
+def test_speech_header_streams_sentences_before_result() -> None:
+    response = speaking_server().post(
+        "/api/v1/voice/stream", content=silent_wav(), headers=SPEECH
+    )
+
+    events = [VOICE_EVENT.validate_json(line) for line in response.content.splitlines()]
+    kinds = [e.type for e in events if e.type != "progress"]
+    assert kinds == ["speech", "speech", "result"]
+    speech = [e for e in events if isinstance(e, VoiceSpeech)]
+    assert [e.index for e in speech] == [0, 1]
+    for event in speech:
+        check_audio(base64.b64decode(event.audio_base64))
+    final = events[-1]
+    assert isinstance(final, VoiceCompleted)
+    assert final.result.audio_status == "streamed"
+    assert final.result.audio_base64 is None and final.result.text == TWO_SENTENCES
+
+
+def test_without_speech_header_stream_is_unchanged() -> None:
+    response = speaking_server().post("/api/v1/voice/stream", content=silent_wav())
+
+    events = [VOICE_EVENT.validate_json(line) for line in response.content.splitlines()]
+    assert not any(isinstance(e, VoiceSpeech) for e in events)
+    final = events[-1]
+    assert isinstance(final, VoiceCompleted)
+    assert final.result.audio_status == "ready"
+    assert final.result.audio_base64 is not None
+
+
+def test_closing_speech_stream_cancels_synthesis_and_releases_slot() -> None:
+    async def scenario() -> None:
+        entered = asyncio.Event()
+        stopped = asyncio.Event()
+
+        class Waiting(FakeSpeech):
+            async def synthesize(self, text: str) -> bytes:
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    stopped.set()
+                return b"unreachable"
+
+        speech = Waiting()
+        pipeline = VoicePipeline(EchoEngine(), speech, speech, simulated=True)
+
+        async def auth() -> None:
+            pass
+
+        endpoint = next(
+            r.endpoint
+            for r in voice_router(pipeline, auth).routes
+            if isinstance(r, APIRoute) and r.path == "/api/v1/voice/stream"
+        )
+
+        async def receive() -> dict[str, object]:
+            return {"type": "http.request", "body": silent_wav(), "more_body": False}
+
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/v1/voice/stream",
+                "headers": [
+                    (b"content-type", b"audio/wav"),
+                    (b"x-neoson-activation", b"explicit"),
+                    (b"x-neoson-speech", b"stream"),
+                ],
+            },
+            receive,
+        )
+        response = await endpoint(request, None)
+        await anext(response.body_iterator)
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        await response.body_iterator.aclose()
+        await asyncio.wait_for(stopped.wait(), timeout=1)
+        pipeline.synthesizer = FakeSpeech()
 
         async def load() -> bytes:
             return silent_wav()

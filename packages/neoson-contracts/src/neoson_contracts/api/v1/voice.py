@@ -10,7 +10,8 @@ class VoiceResponse(MessageResponse):
     audio_format: Literal["wav"] = "wav"
     sample_rate_hz: Literal[16000] = 16000
     audio_seconds: float | None = None
+    # `streamed`: o áudio já foi em eventos `speech`, frase a frase.
     audio_status: Literal[
-        "ready", "synthesis_timeout", "synthesis_failed", "text_too_long"
+        "ready", "streamed", "synthesis_timeout", "synthesis_failed", "text_too_long"
     ] = "ready"
     simulated: bool = False

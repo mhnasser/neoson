@@ -17,11 +17,13 @@ from neoson_contracts.events.v1.robot import (
     VoiceCompleted,
     VoiceFailed,
     VoiceProgress,
+    VoiceSpeech,
 )
 from neoson_core.engine import RunStatus
 from neoson_core.engine.persistence import SessionNotFound
 from neoson_core.engine.voice import (
     InvalidAudio,
+    SpeechSink,
     SpeechUnavailable,
     VoiceActivity,
     VoicePipeline,
@@ -53,6 +55,7 @@ async def _process(
     request: Request,
     session: UUID | None,
     activity: Callable[[VoiceActivity], None] | None = None,
+    on_speech: SpeechSink | None = None,
 ) -> VoiceResult:
     async def load() -> bytes:
         data = bytearray()
@@ -63,7 +66,7 @@ async def _process(
         return bytes(data)
 
     try:
-        return await pipeline.process(load, session, HTTP_OWNER, activity)
+        return await pipeline.process(load, session, HTTP_OWNER, activity, on_speech)
     except InvalidAudio:
         raise HTTPException(422, "Áudio inválido ou fora dos limites.") from None
     except SessionNotFound:
@@ -123,17 +126,25 @@ def voice_router(
         request: Request, session_id: UUID | None = None
     ) -> StreamingResponse:
         await claim(request)
-        queue: asyncio.Queue[VoiceProgress | VoiceCompleted | HTTPException] = (
-            asyncio.Queue(16)
-        )
+        queue: asyncio.Queue[
+            VoiceProgress | VoiceSpeech | VoiceCompleted | HTTPException
+        ] = asyncio.Queue(16)
 
         def activity(state: VoiceActivity) -> None:
             if not queue.full():
                 queue.put_nowait(VoiceProgress(state=state))
 
+        async def speak(index: int, wav: bytes) -> None:
+            # Fala nunca é descartada, ao contrário do progresso: espera vaga na fila.
+            audio = base64.b64encode(wav).decode("ascii")
+            await queue.put(VoiceSpeech(index=index, audio_base64=audio))
+
+        # Opt-in do cliente: sem o cabeçalho, o stream é o de antes (áudio no fim).
+        sink = speak if request.headers.get("x-neoson-speech") == "stream" else None
+
         async def run() -> None:
             try:
-                value = await _process(pipeline, request, session_id, activity)
+                value = await _process(pipeline, request, session_id, activity, sink)
                 await queue.put(VoiceCompleted(result=_response(value, pipeline)))
             except HTTPException as error:
                 await queue.put(error)
@@ -153,7 +164,9 @@ def voice_router(
             raise
 
         async def body() -> AsyncIterator[bytes]:
-            current: VoiceProgress | VoiceCompleted | HTTPException = first
+            current: VoiceProgress | VoiceSpeech | VoiceCompleted | HTTPException = (
+                first
+            )
             try:
                 while True:
                     if isinstance(current, HTTPException):
