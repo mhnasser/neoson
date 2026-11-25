@@ -27,3 +27,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-017](ADR-017-Neo4j-Adapter.md) | Adaptador Neo4j opcional para o grafo | accepted |
 | [ADR-018](ADR-018-Web-Fetch.md) | Leitura de páginas web com proteção de rede e aprovação | accepted |
 | [ADR-019](ADR-019-Document-Ingestion.md) | Ingestão de documentos de texto para o vault e o grafo | accepted |
+| [ADR-021](ADR-021-Multimodal-Ingestion.md) | Ingestão de PDFs e imagens com extração local primeiro | proposed |

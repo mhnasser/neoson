@@ -1,0 +1,29 @@
+flowchart TD
+    IN[Arquivo: neoson-docs ingest ou anexo do Telegram]
+    ID[Identificar pelo conteúdo, SHA-256 e limites]
+    REG[Registrar original e documento pendente]
+    TXT[Texto md e txt: como hoje]
+    Q[(Fila de extração)]
+    PDF[PDF: camada de texto por página, pypdf]
+    SCAN[Página sem texto: imagem da página]
+    FOTO[Foto JPG, PNG ou HEIC: girar e tirar metadados]
+    OCR[OCR local Tesseract, confiança por página]
+    MM[Modelo multimodal, plano B: desligado, teto de custo e aprovação]
+    OUT[Saída comum: nota inerte, trechos na busca, fatos pendentes de revisão e registro de qualidade]
+    IN --> ID --> REG
+    REG -->|texto| TXT --> OUT
+    REG -->|PDF ou foto| Q
+    Q --> PDF
+    Q --> FOTO
+    PDF -->|página com texto| OUT
+    PDF -->|página sem texto| SCAN --> OCR
+    FOTO --> OCR
+    OCR -->|confiança boa| OUT
+    OCR -->|confiança baixa ou foto sem texto| MM --> OUT
+    subgraph ISO[Processo isolado: sem credenciais, prazo e memória limitados]
+        PDF
+        SCAN
+        FOTO
+        OCR
+    end
+    style MM stroke-dasharray: 5 5

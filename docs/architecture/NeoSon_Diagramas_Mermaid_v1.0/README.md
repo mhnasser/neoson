@@ -1,6 +1,6 @@
 # NeoSon — Diagramas Mermaid v1.0
 
-18 arquivos `.mmd` extraídos da especificação técnica v1.0. Os arquivos contêm o código Mermaid original e podem ser incluídos em notas Obsidian ou documentos Markdown com blocos `mermaid`.
+18 arquivos `.mmd` extraídos da especificação técnica v1.0, mais o D19, proposto pelo ADR-021. Os arquivos contêm o código Mermaid original e podem ser incluídos em notas Obsidian ou documentos Markdown com blocos `mermaid`.
 
 | Arquivo | Diagrama |
 |---|---|
@@ -22,6 +22,7 @@
 | D16.mmd | Laboratório de avaliação do roteador |
 | D17.mmd | CI/CD e publicação |
 | D18.mmd | Primeiro incremento ponta a ponta |
+| D19.mmd | Ingestão de PDFs e imagens (proposta, ADR-021) |
 
 Para visualizar todos de uma vez, abra [NeoSon_Diagramas.md](NeoSon_Diagramas.md) e use o preview (`Ctrl+Shift+V`).
 

@@ -1,6 +1,6 @@
 # NeoSon — Diagramas Mermaid v1.0
 
-Todos os 18 diagramas reunidos para visualização. Abra o preview com `Ctrl+Shift+V`.
+Todos os 19 diagramas reunidos para visualização. Abra o preview com `Ctrl+Shift+V`.
 
 Os arquivos `.mmd` desta pasta continuam sendo a fonte: se alterar algum deles, atualize também o bloco correspondente aqui.
 
@@ -24,6 +24,7 @@ Os arquivos `.mmd` desta pasta continuam sendo a fonte: se alterar algum deles, 
 - [D16 — Laboratório de avaliação do roteador](#d16--laboratório-de-avaliação-do-roteador)
 - [D17 — CI/CD e publicação](#d17--cicd-e-publicação)
 - [D18 — Primeiro incremento ponta a ponta](#d18--primeiro-incremento-ponta-a-ponta)
+- [D19 — Ingestão de PDFs e imagens (proposta)](#d19--ingestão-de-pdfs-e-imagens-proposta)
 
 ## D01 — Arquitetura lógica de componentes
 
@@ -534,3 +535,38 @@ flowchart LR
     WORK --> NOTE
 ```
 
+## D19 — Ingestão de PDFs e imagens (proposta)
+
+Fonte: [D19.mmd](D19.mmd). Proposta do [ADR-021](../../decisions/ADR-021-Multimodal-Ingestion.md), não da especificação v1.0; amplia o D11 com rotas por tipo, OCR local e plano B multimodal.
+
+```mermaid
+flowchart TD
+    IN[Arquivo: neoson-docs ingest ou anexo do Telegram]
+    ID[Identificar pelo conteúdo, SHA-256 e limites]
+    REG[Registrar original e documento pendente]
+    TXT[Texto md e txt: como hoje]
+    Q[(Fila de extração)]
+    PDF[PDF: camada de texto por página, pypdf]
+    SCAN[Página sem texto: imagem da página]
+    FOTO[Foto JPG, PNG ou HEIC: girar e tirar metadados]
+    OCR[OCR local Tesseract, confiança por página]
+    MM[Modelo multimodal, plano B: desligado, teto de custo e aprovação]
+    OUT[Saída comum: nota inerte, trechos na busca, fatos pendentes de revisão e registro de qualidade]
+    IN --> ID --> REG
+    REG -->|texto| TXT --> OUT
+    REG -->|PDF ou foto| Q
+    Q --> PDF
+    Q --> FOTO
+    PDF -->|página com texto| OUT
+    PDF -->|página sem texto| SCAN --> OCR
+    FOTO --> OCR
+    OCR -->|confiança boa| OUT
+    OCR -->|confiança baixa ou foto sem texto| MM --> OUT
+    subgraph ISO[Processo isolado: sem credenciais, prazo e memória limitados]
+        PDF
+        SCAN
+        FOTO
+        OCR
+    end
+    style MM stroke-dasharray: 5 5
+```
