@@ -1,4 +1,5 @@
-"""Rosto que acorda com "Ei NeoSon"; somente health é repetido, nunca um pedido.
+"""Rosto que acorda com "Ei NeoSon" e, depois de cada resposta, segue escutando por
+1 min sem a wake word; somente health é repetido, nunca um pedido.
 
 O rosto não mostra texto: o estado (escutando, pensando, falando) vai para o
 display do peito e muda a expressão dos olhos, assim como o emoji da frase falada.
@@ -270,6 +271,7 @@ class ContinuousRobot:
         self.approvals = approvals
         self.stop = threading.Event()
         self.online = threading.Event()
+        self.answered = False  # abre a janela de conversa do WakeListener
         self._work = threading.Lock()
         self._delay = 1.0
         self.display.show(RobotState.OFFLINE)
@@ -319,10 +321,12 @@ class ContinuousRobot:
             or not self._work.acquire(blocking=False)
         ):
             return False
+        self.answered = False
 
         def turn() -> None:
             try:
                 outcome = self.controller.interact(True, self.stop.is_set)
+                self.answered = outcome.feedback is Feedback.NONE
                 if outcome.state == RobotState.OFFLINE:
                     self.online.clear()
                 elif (

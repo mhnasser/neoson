@@ -27,6 +27,7 @@ from neoson_robot.face import (
     Face,
     FullscreenGuard,
     Gestures,
+    behave,
     blink_factor,
     eye_outline,
     eyelid_box,
@@ -89,18 +90,21 @@ def test_eyelid_hides_below_eye_until_it_smiles() -> None:
     )  # cobre o olho inteiro na largura
 
 
-def test_loop_alternates_neutral_and_surprised_without_happy() -> None:
-    assert [name for name, _ in PROGRAM] == ["neutro", "surpreso"]
+def test_rest_alternates_awake_and_asleep_for_half_an_hour_each() -> None:
+    assert PROGRAM == (("neutro", 1800.0), ("dormindo", 1800.0))
     assert program_face(3.0)[0] == "neutro"
-    assert program_face(8.0 + 2.0)[0] == "surpreso"
+    assert program_face(1800.0 + 60)[0] == "dormindo"
+    assert program_face(1800.0 + 60)[1].left.h < 30  # olhos fechados
     assert program_face(CYCLE + 3.0)[0] == "neutro"
-    # Sem toque, o rosto nunca sorri: a expressão feliz é só da reação.
-    steps = round(CYCLE / 0.05)
-    assert max(program_face(i * 0.05)[1].left.smile for i in range(steps)) == 0.0
+    # Acordado, repete o olhar e as piscadas a cada 8 s; nunca sorri nem se assusta.
+    assert program_face(8.0 * 100 + 2.8)[1].left.x == program_face(2.8)[1].left.x
+    awake = [program_face(i * 0.37)[1].left for i in range(4865)]  # ~30 min
+    assert max(eye.smile for eye in awake) == 0.0
+    assert max(eye.w for eye in awake) < EXPRESSIONS["surpreso"].left.w
 
 
 def test_no_jumps_between_expressions_or_when_the_loop_restarts() -> None:
-    boundaries = [0.0, 8.0, CYCLE, CYCLE + 8.0]
+    boundaries = [0.0, 8.0, 16.0, 1800.0, CYCLE, CYCLE + 1800.0]
     epsilon = 1e-4
     for boundary in boundaries:
         before = program_face(boundary - epsilon)[1]
@@ -109,13 +113,13 @@ def test_no_jumps_between_expressions_or_when_the_loop_restarts() -> None:
 
 
 def test_transition_eases_into_the_next_expression() -> None:
-    calm, surprised = EXPRESSIONS["neutro"].left, EXPRESSIONS["surpreso"].left
-    start = program_face(8.0)[1].left
-    middle = program_face(8.0 + TRANSITION / 2)[1].left
-    end = program_face(8.0 + TRANSITION)[1].left
-    assert start.w == pytest.approx(calm.w)
-    assert calm.w + 10 < middle.w < surprised.w - 10
-    assert end.w == pytest.approx(surprised.w)
+    calm, asleep = EXPRESSIONS["neutro"].left, EXPRESSIONS["dormindo"].left
+    start = program_face(1800.0)[1].left
+    middle = program_face(1800.0 + TRANSITION / 2)[1].left
+    end = program_face(1800.0 + TRANSITION)[1].left
+    assert start.h == pytest.approx(calm.h)
+    assert asleep.h + 10 < middle.h < calm.h - 10
+    assert end.h == pytest.approx(asleep.h)
 
 
 def test_blinks_close_the_eyes_briefly() -> None:
@@ -146,7 +150,7 @@ def test_petting_closes_the_eyes_happily_and_surprised_face_pops() -> None:
     assert all(eye.y == pytest.approx(base.y) for eye in eyes)  # sem pulo
 
     surprised = EXPRESSIONS["surpreso"].left
-    popped = program_face(8.0 + TRANSITION + 0.25)[1].left
+    popped = behave("surpreso", TRANSITION + 0.25, 4.5).left
     assert popped.w > surprised.w * 1.05
 
 
@@ -176,17 +180,27 @@ def test_face_follows_robot_states_smoothly_and_returns_to_the_loop() -> None:
     )
     animator.follow("idle", 0.0)
     animator.frame(4.0)
-    assert (
-        gap(animator.frame(4.0 + TRANSITION), program_face(4.0 + TRANSITION)[1]) < 1e-9
-    )
+    # Depois de conversar, o repouso recomeça acordado (não volta a dormir na hora).
+    awake = program_face(2 * TRANSITION)[1]
+    assert gap(animator.frame(4.0 + TRANSITION), awake) < 1e-9
 
     # Erro some sozinho, como o aviso do peito: o rosto não fica triste para sempre.
     animator.follow("error", 5.0)
     animator.frame(10.0)
     assert animator.frame(10.0 + 1.0).left.tilt > 0
     animator.frame(10.0 + 5.0)
-    later = 10.0 + 5.0 + TRANSITION
-    assert gap(animator.frame(later), program_face(later)[1]) < 1e-9
+    assert gap(animator.frame(10.0 + 5.0 + TRANSITION), awake) < 1e-9
+
+
+def test_talking_while_asleep_wakes_the_rest_program_up() -> None:
+    animator = Animator()
+    animator.frame(1900.0)
+    assert animator.frame(1901.0).left.h < 30  # dormindo
+    animator.follow("listening", 120.0)
+    animator.frame(1902.0)
+    animator.follow("idle", 0.0)
+    animator.frame(1910.0)
+    assert animator.frame(1912.0).left.h > 100  # acordado de novo
 
 
 def test_emoji_expression_shows_for_a_while_over_the_state() -> None:

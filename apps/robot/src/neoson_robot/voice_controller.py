@@ -170,6 +170,8 @@ class VoiceController:
                     self.playback.play(sentence, stop)
                     played = True
                 elif isinstance(event, VoiceFailed):
+                    if event.error.message == "invalid_transcription":
+                        raise Cancelled  # só ruído: ninguém pediu nada
                     raise GatewayError(
                         "Falha no processamento de voz.", event.status_code
                     )

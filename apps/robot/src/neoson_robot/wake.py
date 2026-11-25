@@ -36,6 +36,8 @@ FLOOR_FRAMES = 62  # ~5 s de ruído de fundo
 MIN_SPEECH_FRAMES = 3  # 240 ms: menos que isso é estalo, não pedido
 END_SILENCE_FRAMES = 12  # ~1 s de silêncio encerra o pedido
 NO_SPEECH_FRAMES = 50  # ~4 s sem fala depois da wake word: volta ao repouso
+FOLLOW_UP_FRAMES = 750  # 1 min: depois de uma resposta, escuta sem a wake word
+PRE_ROLL_FRAMES = 6  # ~0,5 s antes do começo da fala vão junto no pedido
 MAX_REQUEST_SECONDS = 15.0
 
 
@@ -234,6 +236,7 @@ class SpokenRequest:
         self.mic = mic
         self.limit = round(max_seconds * RATE / FRAME)
         self.levels: deque[float] = deque(maxlen=FLOOR_FRAMES)
+        self.patience = NO_SPEECH_FRAMES  # trechos sem fala até desistir
 
     def observe(self, frame: bytes) -> None:
         """Ruído de fundo, medido enquanto espera a wake word."""
@@ -246,21 +249,27 @@ class SpokenRequest:
     def record(self, cancelled: Callable[[], bool]) -> bytes:
         threshold = self.threshold()
         frames: list[bytes] = []
-        spoken = quiet = 0
+        spoken = quiet = waited = 0
         while len(frames) < self.limit:
             if cancelled():
                 raise Cancelled
             frame = self.mic.frame()
             if frame is None:
                 raise DeviceError("O microfone não entregou áudio.")
+            if spoken < MIN_SPEECH_FRAMES and len(frames) == PRE_ROLL_FRAMES:
+                # Antes da fala, guarda só o começo dela: o limite vale para a fala.
+                spoken -= rms(frames.pop(0)) >= threshold
             frames.append(frame)
             if rms(frame) >= threshold:
                 spoken, quiet = spoken + 1, 0
             else:
                 quiet += 1
-            if spoken >= MIN_SPEECH_FRAMES and quiet >= END_SILENCE_FRAMES:
-                break
-            if spoken < MIN_SPEECH_FRAMES and len(frames) >= NO_SPEECH_FRAMES:
+            if spoken >= MIN_SPEECH_FRAMES:
+                if quiet >= END_SILENCE_FRAMES:
+                    break
+                continue
+            waited += 1
+            if waited >= self.patience:
                 raise Cancelled  # acordou, mas ninguém pediu nada
         if spoken < MIN_SPEECH_FRAMES:
             raise Cancelled
@@ -277,6 +286,7 @@ class Detector(Protocol):
 
 class Runtime(Protocol):
     stop: threading.Event
+    answered: bool  # o último turno terminou com resposta falada
 
     def available(self) -> bool: ...
     def activate(self) -> bool: ...
@@ -310,6 +320,16 @@ class WakeListener:
         started = self.runtime.activate()
         self.mic.clear()
         self.detector.reset()
+        # Conversa: depois de cada resposta, mais um pedido sem a wake word.
+        self.request.patience = FOLLOW_UP_FRAMES
+        try:
+            follow = started
+            while follow and self.runtime.answered and self.runtime.available():
+                follow = self.runtime.activate()
+                self.mic.clear()
+                self.detector.reset()
+        finally:
+            self.request.patience = NO_SPEECH_FRAMES
         return started
 
     def run(self) -> None:

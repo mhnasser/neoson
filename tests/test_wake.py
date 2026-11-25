@@ -21,12 +21,14 @@ from neoson_robot.voice_controller import Cancelled
 from neoson_robot.wake import (
     EMBEDDINGS,
     END_SILENCE_FRAMES,
+    FOLLOW_UP_FRAMES,
     FRAME,
     FRAME_BYTES,
     MEL_CONTEXT,
     MEL_STEP,
     MEL_WINDOW,
     NO_SPEECH_FRAMES,
+    PRE_ROLL_FRAMES,
     MicStream,
     SpokenRequest,
     WakeWord,
@@ -58,7 +60,22 @@ def test_request_ends_on_silence_and_is_a_valid_wav() -> None:
     frames = [tone(100)] * 5 + [tone(900)] * 10 + [tone(100)] * 30
     audio = request(frames).record(lambda: False)
     check_audio(audio)
-    assert (len(audio) - 44) // FRAME_BYTES == 5 + 10 + END_SILENCE_FRAMES
+    # Antes da fala só fica a pré-rolagem: 3 trechos de silêncio + os 3 que a abrem.
+    assert (len(audio) - 44) // FRAME_BYTES == PRE_ROLL_FRAMES + 7 + END_SILENCE_FRAMES
+
+
+def test_long_wait_keeps_only_the_start_of_speech() -> None:
+    # Janela de conversa: espera muito mais que o limite do pedido pela fala.
+    frames = [tone(100)] * 600 + [tone(900)] * 10 + [tone(100)] * 30
+    spoken = request(frames)
+    spoken.patience = FOLLOW_UP_FRAMES
+    audio = spoken.record(lambda: False)
+    assert (len(audio) - 44) // FRAME_BYTES == PRE_ROLL_FRAMES + 7 + END_SILENCE_FRAMES
+    spoken = request([tone(100)] * (FOLLOW_UP_FRAMES + 5))
+    spoken.patience = FOLLOW_UP_FRAMES
+    with pytest.raises(Cancelled):  # ninguém falou no minuto
+        spoken.record(lambda: False)
+    assert len(spoken.mic.frames) == 5  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize(

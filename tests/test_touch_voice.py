@@ -24,8 +24,13 @@ from neoson_robot.touch_voice import (
     describe,
     gateway_ready,
 )
-from neoson_robot.voice_controller import Feedback, VoiceController
-from neoson_robot.wake import SpokenRequest, WakeListener
+from neoson_robot.voice_controller import Feedback, Outcome, VoiceController
+from neoson_robot.wake import (
+    FOLLOW_UP_FRAMES,
+    NO_SPEECH_FRAMES,
+    SpokenRequest,
+    WakeListener,
+)
 
 
 class OfflineGateway:
@@ -116,6 +121,39 @@ def test_one_turn_at_a_time_no_queue_and_no_retry_after_connection_loss() -> Non
     assert wake.step() and len(jobs) == 1
     # Depois de cada turno o que o microfone ouviu (inclusive a resposta) é jogado fora.
     assert mic.cleared == detector.resets == 2
+
+
+class Turns:
+    """Controlador falso: cada turno devolve o próximo resultado do roteiro."""
+
+    def __init__(self, request: SpokenRequest, *feedback: Feedback) -> None:
+        self.request, self.feedback = request, list(feedback)
+        self.patience: list[int] = []
+
+    def interact(self, activated: bool, cancelled: Any = None) -> Outcome:
+        self.patience.append(self.request.patience)
+        return Outcome(RobotState.IDLE, self.feedback.pop(0))
+
+
+def test_after_an_answer_it_keeps_listening_without_the_wake_word() -> None:
+    mic, detector = Mic(10), Detector()
+    request = SpokenRequest(mic)
+    turns = Turns(request, Feedback.NONE, Feedback.NONE, Feedback.CANCELLED)
+    robot = ContinuousRobot(turns, StatusDisplay(), lambda: True, start=lambda w: w())  # type: ignore[arg-type]
+    robot.check()
+    wake = WakeListener(mic, detector, request, robot)
+
+    assert wake.step()
+
+    # 1 pedido pela wake word, 2 pela janela de conversa; o 3º não ouviu ninguém.
+    assert turns.patience == [NO_SPEECH_FRAMES, FOLLOW_UP_FRAMES, FOLLOW_UP_FRAMES]
+    assert request.patience == NO_SPEECH_FRAMES and not robot.answered
+    assert mic.cleared == detector.resets == 3  # a própria resposta nunca é ouvida
+
+    # Falha ou pedido de aprovação não abrem a janela.
+    for feedback in (Feedback.ERROR, Feedback.APPROVAL):
+        turns.feedback = [feedback]
+        assert wake.step() and not turns.feedback and not robot.answered
 
 
 def test_offline_or_stopped_robot_never_wakes() -> None:

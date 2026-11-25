@@ -11,6 +11,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
+from neoson_contracts.api.v1.errors import ErrorResponse
 from neoson_contracts.api.v1.voice import VoiceResponse
 from neoson_contracts.events.v1.robot import (
     VOICE_EVENT,
@@ -18,6 +19,7 @@ from neoson_contracts.events.v1.robot import (
     RobotState,
     VoiceCompleted,
     VoiceEvent,
+    VoiceFailed,
     VoiceProgress,
     VoiceSpeech,
 )
@@ -623,6 +625,21 @@ def test_controller_shows_the_sentence_expression_before_playing_it() -> None:
     control.interact(True)
 
     assert seen == [("feliz", 1)]  # antes de tocar a 2ª frase
+
+
+def test_nothing_understood_goes_back_to_rest_without_error() -> None:
+    def failed(message: str) -> VoiceFailed:
+        error = ErrorResponse(code="voice_failed", message=message)
+        return VoiceFailed(status_code=503, error=error)
+
+    control, _, display, _ = speaking_controller(failed("invalid_transcription"))
+    outcome = control.interact(True)
+    # Ruído sem fala (comum na janela de conversa) não deixa o rosto triste.
+    assert (outcome.state, outcome.feedback) == (RobotState.IDLE, Feedback.CANCELLED)
+    assert display.frames[-1] == (RobotState.IDLE, Feedback.CANCELLED)
+
+    control, _, _, _ = speaking_controller(failed("transcription_timeout"))
+    assert control.interact(True).feedback is Feedback.ERROR
 
 
 def test_cancel_during_sentence_stops_playback_and_stream() -> None:

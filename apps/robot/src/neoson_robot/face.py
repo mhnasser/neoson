@@ -1,9 +1,10 @@
 """Rosto do robô na tela de 7": dois olhos animados, em tela cheia, sobre fundo preto.
 
-As expressões neutro e surpreso se repetem em loop, com transições suaves, piscadas
-e olhares. Durante a conversa o rosto segue o estado do robô (escutando, pensando,
-falando, triste no erro, sonolento sem servidor) e um emoji da resposta muda a
-expressão por alguns segundos. Esfregar a tela é carinho: os olhos viram arcos
+Em repouso, o rosto fica 30 min acordado (olhando para os lados e piscando) e 30 min
+dormindo, com transições suaves; depois de uma conversa recomeça acordado. Durante
+a conversa o rosto segue o estado do robô (escutando, pensando, falando, triste no
+erro, sonolento sem servidor) e um emoji da resposta muda a expressão por alguns
+segundos. Esfregar a tela é carinho: os olhos viram arcos
 felizes e balançam enquanto o dedo se move. Três toques rápidos (dedo parado)
 mostram a câmera em tela cheia e dois voltam ao rosto; segurar 3 s com o dedo
 parado, ou Esc, fecha. Dedo que se move não conta como toque nem como segurar,
@@ -124,12 +125,14 @@ EXPRESSIONS: dict[str, Face] = {
     "falando": _pair(150, 240, 150, 176, 60),
     "triste": _pair(150, 258, 150, 150, 58, lid=0.32, tilt=0.4),
     "sonolento": _pair(150, 256, 150, 170, 60, lid=0.55),
+    "dormindo": _pair(150, 262, 150, 14, 7),  # olhos fechados: dois traços
 }
-# Loop sem toque. Feliz e carinho ficam fora do loop; carinho é a reação a esfregar.
+# Repouso: 30 min acordado (olhando para os lados e piscando) e 30 min dormindo.
 PROGRAM: tuple[tuple[str, float], ...] = (
-    ("neutro", 8.0),
-    ("surpreso", 4.5),
+    ("neutro", 1800.0),
+    ("dormindo", 1800.0),
 )
+NEUTRAL_LOOP = 8.0  # s: o olhar e as piscadas do neutro se repetem
 # Expressão de cada estado do robô; estado fora daqui (repouso) é o loop.
 STATE_FACES = {
     "listening": "escutando",
@@ -237,6 +240,7 @@ def behave(name: str, u: float, duration: float) -> Face:
     """Expressão `name` no instante `u` da sua fase, com seus movimentos."""
     face = EXPRESSIONS[name]
     if name == "neutro":
+        u %= NEUTRAL_LOOP
         dx = track(u, _GLANCE)
         # O olho do lado para onde ele olha fica um pouco maior.
         lean = dx / 60.0 * 0.04
@@ -271,6 +275,9 @@ def behave(name: str, u: float, duration: float) -> Face:
     elif name == "sonolento":
         nod = math.sin(2 * math.pi * 0.15 * u) * 6.0  # cochilando
         face = face.each(lambda eye: eye.moved(dy=nod))
+    elif name == "dormindo":
+        breath = math.sin(2 * math.pi * 0.2 * u) * 4.0  # respiração lenta
+        face = face.each(lambda eye: eye.moved(dy=breath))
     if name in _REPEAT:
         period, at = _REPEAT[name]
         factor = blink_factor(u % period, (at,))
@@ -323,6 +330,7 @@ class Animator:
         self._mode_until = self._since = 0.0
         self._from: Face | None = None
         self._base: Face | None = None
+        self._epoch = 0.0  # início do programa de repouso
 
     def follow(self, state: str, seconds: float) -> None:
         """Expressão do estado do robô por até `seconds`; repouso volta ao loop."""
@@ -346,7 +354,7 @@ class Animator:
     def frame(self, t: float) -> Face:
         self._apply(t)
         if self._mode is None:
-            face = program_face(t, self.program)[1]
+            face = program_face(t - self._epoch, self.program)[1]
         else:
             face = behave(self._mode, t - self._since, math.inf)
         if self._from is not None and t - self._since < TRANSITION:
@@ -368,14 +376,20 @@ class Animator:
             self._applied = asked
             mode, seconds = asked
             if mode != self._mode:  # mesmo estado: só renova a validade
-                self._from, self._since = self._base, t
-            self._mode, self._mode_until = mode, t + seconds
+                self._shift(t, mode)
+            self._mode_until = t + seconds
         elif self._mode is not None and t >= self._mode_until:
-            # Estado venceu (ex.: aviso de erro): volta ao loop, sem salto.
-            self._from, self._since, self._mode = self._base, t, None
+            self._shift(t, None)  # estado venceu (ex.: aviso de erro)
         mood, self._mood = self._mood, None
         if mood is not None:
             self.react(t, mood, MOOD)
+
+    def _shift(self, t: float, mode: str | None) -> None:
+        """Troca de camada sem salto; depois de conversar, o repouso recomeça
+        acordado (já passada a transição interna do programa)."""
+        self._from, self._since, self._mode = self._base, t, mode
+        if mode is None:
+            self._epoch = t - TRANSITION
 
 
 def rounded_rect(
@@ -989,7 +1003,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--expression",
         choices=sorted(EXPRESSIONS),
-        help="repete só essa expressão (padrão: neutro e surpreso em loop)",
+        help="repete só essa expressão (padrão: 30 min acordado e 30 min dormindo)",
     )
     parser.add_argument("--fps", type=_fps, default=DEFAULT_FPS)
     parser.add_argument(
