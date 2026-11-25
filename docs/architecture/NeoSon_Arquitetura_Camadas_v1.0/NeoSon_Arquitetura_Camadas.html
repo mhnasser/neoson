@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arquitetura NeoSon – visão geral</title>
+<style>
+  html, body { margin: 0; background: #0f2136; overflow-x: hidden; }
+  #c { position: relative; width: 1500px; height: 820px; transform-origin: 0 0; color: #e8eef6;
+       font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  h1 { position: absolute; left: 28px; top: 14px; margin: 0; font-size: 25px; font-weight: 700; letter-spacing: .01em; }
+  .sub-title { position: absolute; left: 28px; top: 56px; font-size: 13px; color: #9fb0c6; }
+  .layer { position: absolute; box-sizing: border-box; background: #132a44; border: 1px solid #2f4b6b; border-radius: 12px; }
+  .lt { position: absolute; left: 14px; top: 9px; font-size: 11.5px; font-weight: 700; letter-spacing: .07em;
+        text-transform: uppercase; color: #9fb0c6; white-space: nowrap; }
+  .lfoot { position: absolute; left: 14px; bottom: 5px; font-size: 11px; color: #9fb0c6; white-space: nowrap; }
+  .cmp { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
+         justify-content: center; gap: 5px; padding: 4px 6px; background: #0f2136; border: 1px solid #34506f;
+         border-radius: 8px; font-size: 12.5px; line-height: 1.2; text-align: center; }
+  .cmp.row { flex-direction: row; justify-content: flex-start; gap: 8px; padding: 0 10px; text-align: left; }
+  .cmp svg, .sub svg, .chip svg { width: 20px; height: 20px; flex: none; fill: none; stroke: #9fb0c6;
+         stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .cmp.row svg { width: 17px; height: 17px; }
+  .ai { border: 1.5px solid #5ec3ff; }
+  .ai > svg { stroke: #5ec3ff; }
+  .pend { border: 1.5px dashed #e3a33a; }
+  .pend > svg { stroke: #e3a33a; }
+  .opt { display: block; font-size: 11px; color: #9fb0c6; }
+  .row .opt { display: inline; }
+  .robot { justify-content: flex-start; padding: 10px 8px; gap: 7px; }
+  .robot .head { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .sub { box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 7px; padding: 6px 7px;
+         background: #132a44; border: 1px solid #34506f; border-radius: 6px; font-size: 11.5px; text-align: left; }
+  .sub svg { width: 16px; height: 16px; }
+  .robot .sub { flex: 1; }
+  .sub.ai { border: 1.5px solid #5ec3ff; }
+  .sub.ai svg { stroke: #5ec3ff; }
+  .group { position: absolute; box-sizing: border-box; border: 1.5px solid #5ec3ff; border-radius: 10px; }
+  .band { position: absolute; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 14px;
+          background: #132a44; border: 1px solid #2f4b6b; }
+  .band .lt { position: static; width: 112px; flex: none; white-space: normal; line-height: 1.3; }
+  .chip { display: flex; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid #34506f; border-radius: 14px;
+          background: #0f2136; font-size: 11.5px; white-space: nowrap; }
+  .chip svg { width: 15px; height: 15px; }
+  .chip.pend { border: 1.5px dashed #e3a33a; }
+  .legend { position: absolute; left: 28px; top: 752px; display: flex; align-items: center; gap: 22px; font-size: 12px; color: #9fb0c6; }
+  .legend span { display: flex; align-items: center; gap: 7px; }
+  .sw { width: 22px; height: 14px; box-sizing: border-box; border-radius: 4px; background: #0f2136; border: 1px solid #34506f; }
+  .sw.ai { border: 1.5px solid #5ec3ff; }
+  .sw.pend { border: 1.5px dashed #e3a33a; }
+  .foot { position: absolute; left: 28px; top: 792px; font-size: 11px; color: #9fb0c6; }
+  #arrows { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; }
+  #arrows path { fill: none; stroke: #8fa6c4; stroke-width: 2; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-robot" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4M10 4h4"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/><path d="M10 16.5h4"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+    <symbol id="i-term" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/></symbol>
+    <symbol id="i-api" viewBox="0 0 24 24"><path d="M8 4c-2 0-3 1-3 3v2c0 1.5-1 2.5-2 3 1 .5 2 1.5 2 3v2c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2c0 1.5 1 2.5 2 3-1 .5-2 1.5-2 3v2c0 2-1 3-3 3"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2M21 12h0"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2"/><path d="M6 16V9c0-2 1-3 3-3h9M15 3l3 3-3 3M8 18h10M15 15l3 3-3 3"/></symbol>
+    <symbol id="i-loop" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10M9 8h5"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.5 5.5a4 4 0 0 0 4.9 4.9L21 12l-9 9-3-3 9-9-1.6-1.6a4 4 0 0 0-4.9-4.9l2.5 2.5-2 2-2.5-2.5"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6 8v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8M12 12v4"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></symbol>
+    <symbol id="i-notes" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h5"/></symbol>
+    <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M8 8l8-1.5M7 9l4 7M17 8l-4 8"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/></symbol>
+    <symbol id="i-dash" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M10 9v11"/></symbol>
+    <symbol id="i-filein" viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M3 14h8M8 11l3 3-3 3"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 9l2 2 4-4M8 15h8"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></symbol>
+    <symbol id="i-model" viewBox="0 0 24 24"><circle cx="5" cy="7" r="1.6"/><circle cx="5" cy="17" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/><circle cx="19" cy="12" r="1.6"/><path d="M6.5 7.5l4 4M6.5 16.5l4-4M6.5 7l4-1.5M6.5 17l4 1.5M13.5 5.5l4 5.5M13.5 12h4M13.5 18.5l4-5.5"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5"/></symbol>
+    <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><circle cx="9.5" cy="10" r="1"/><circle cx="14.5" cy="10" r="1"/></symbol>
+    <symbol id="i-lcd" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M6 11h7M6 14h10"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-ear" viewBox="0 0 24 24"><path d="M7 10a5 5 0 0 1 10 0c0 3-3 4-3 7a3 3 0 0 1-5.5 1.5"/><path d="M10 10a2 2 0 0 1 4 0"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="14" r="4"/><path d="M11 11l9-9M17 5l2 2M15 7l2 2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4v4H7zM14 9h3M14 12h3M7 16h10"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="10" rx="1.5"/><path d="M3 19h18"/></symbol>
+    <symbol id="i-desk" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></symbol>
+    <symbol id="i-py" viewBox="0 0 24 24"><path d="M12 3H9a3 3 0 0 0-3 3v3h6M12 21h3a3 3 0 0 0 3-3v-3h-6M6 9H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1M18 15h1a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-1M6 15v-3a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v3"/></symbol>
+  </defs>
+</svg>
+
+<div id="c">
+  <h1>Arquitetura NeoSon – visão geral</h1>
+  <div class="sub-title">Assistente pessoal com motor Python próprio · v1.0 · 2026-11-25</div>
+
+  <!-- Canais -->
+  <div class="layer" style="left:20px;top:92px;width:170px;height:522px"><div class="lt">Canais</div></div>
+  <div class="cmp robot" style="left:30px;top:122px;width:150px;height:318px">
+    <div class="head"><svg><use href="#i-robot"/></svg>NeoSon Robot</div>
+    <div class="sub ai"><svg><use href="#i-ear"/></svg>Wake word «Ei NeoSon»</div>
+    <div class="sub"><svg><use href="#i-mic"/></svg>Microfone e alto‑falante</div>
+    <div class="sub"><svg><use href="#i-screen"/></svg>Tela touch · rosto</div>
+    <div class="sub"><svg><use href="#i-lcd"/></svg>LCD do peito</div>
+    <div class="sub"><svg><use href="#i-cam"/></svg>Câmera</div>
+  </div>
+  <div class="cmp" style="left:30px;top:452px;width:150px;height:72px"><svg><use href="#i-chat"/></svg><div>Telegram <span class="opt">(opcional)</span></div></div>
+  <div class="cmp row" style="left:30px;top:536px;width:150px;height:64px"><svg><use href="#i-term"/></svg>Cliente HTTP</div>
+
+  <!-- Gateway -->
+  <div class="layer" style="left:235px;top:92px;width:170px;height:522px"><div class="lt">Gateway</div></div>
+  <div class="cmp" style="left:245px;top:122px;width:150px;height:106px"><svg><use href="#i-api"/></svg>API v1 · FastAPI</div>
+  <div class="cmp" style="left:245px;top:244px;width:150px;height:106px"><svg><use href="#i-wave"/></svg>Voz em stream</div>
+  <div class="cmp" style="left:245px;top:366px;width:150px;height:106px"><svg><use href="#i-shield"/></svg>Aprovação de ações</div>
+  <div class="cmp" style="left:245px;top:488px;width:150px;height:106px"><svg><use href="#i-chat"/></svg><div>Canal Telegram<span class="opt">(opcional)</span></div></div>
+
+  <!-- Motor -->
+  <div class="layer" style="left:450px;top:92px;width:630px;height:212px"><div class="lt">Motor</div></div>
+  <div class="cmp" style="left:465px;top:122px;width:135px;height:70px"><svg><use href="#i-route"/></svg>Router</div>
+  <div class="cmp" style="left:612px;top:122px;width:135px;height:70px"><svg><use href="#i-loop"/></svg>Agent Loop</div>
+  <div class="cmp" style="left:759px;top:122px;width:135px;height:70px"><svg><use href="#i-book"/></svg>Skills</div>
+  <div class="cmp" style="left:465px;top:204px;width:208px;height:70px"><svg><use href="#i-mic"/></svg>Pipeline de voz</div>
+  <div class="cmp" style="left:686px;top:204px;width:208px;height:70px"><svg><use href="#i-branch"/></svg><div>Delegação interna<span class="opt">(opcional)</span></div></div>
+  <div class="cmp" style="left:910px;top:122px;width:155px;height:152px"><svg><use href="#i-tool"/></svg>Tool Registry<br>+ Policy Engine</div>
+
+  <!-- Memória e armazenamento -->
+  <div class="layer" style="left:450px;top:335px;width:630px;height:117px"><div class="lt" style="left:140px">Memória e armazenamento</div></div>
+  <div class="cmp" style="left:465px;top:365px;width:110px;height:75px"><svg><use href="#i-db"/></svg>SQLite</div>
+  <div class="cmp" style="left:590px;top:365px;width:240px;height:75px"><svg><use href="#i-notes"/></svg>Vault do Obsidian</div>
+  <div class="cmp" style="left:910px;top:365px;width:155px;height:75px"><svg><use href="#i-graph"/></svg><div>Neo4j <span class="opt">(opcional)</span></div></div>
+
+  <!-- Worker -->
+  <div class="layer" style="left:450px;top:487px;width:630px;height:127px"><div class="lt">Worker (assíncrono)</div><div class="lfoot">outbox com lease, retry e dead letter · CLIs de backup e manutenção</div></div>
+  <div class="cmp" style="left:465px;top:515px;width:95px;height:70px"><svg><use href="#i-chart"/></svg>Uso e custo</div>
+  <div class="cmp" style="left:570px;top:515px;width:115px;height:70px"><svg><use href="#i-dash"/></svg>Painéis do vault</div>
+  <div class="cmp" style="left:695px;top:515px;width:120px;height:70px"><svg><use href="#i-filein"/></svg>Ingestão de documentos</div>
+  <div class="group" style="left:825px;top:508px;width:243px;height:84px"></div>
+  <div class="cmp" style="left:832px;top:515px;width:114px;height:70px;border-color:#34506f"><svg style="stroke:#5ec3ff"><use href="#i-spark"/></svg><div>Extração do grafo<span class="opt">(opcional)</span></div></div>
+  <div class="cmp" style="left:952px;top:515px;width:110px;height:70px"><svg style="stroke:#5ec3ff"><use href="#i-check"/></svg><div>Curadoria de skills<span class="opt">(opcional)</span></div></div>
+
+  <!-- Integrações -->
+  <div class="layer" style="left:1125px;top:92px;width:355px;height:130px"><div class="lt">Integrações</div></div>
+  <div class="cmp row" style="left:1137px;top:122px;width:331px;height:28px"><svg><use href="#i-mail"/></svg>Microsoft Graph <span class="opt">(opcional)</span></div>
+  <div class="cmp row" style="left:1137px;top:154px;width:331px;height:28px"><svg><use href="#i-globe"/></svg>Web · web_fetch <span class="opt">(opcional)</span></div>
+  <div class="cmp row pend" style="left:1137px;top:186px;width:331px;height:28px"><svg><use href="#i-plug"/></svg>Outlook · outlook-mcp</div>
+
+  <!-- Provedores de IA -->
+  <div class="layer" style="left:1125px;top:250px;width:355px;height:122px"><div class="lt">Provedores de IA</div></div>
+  <div class="cmp ai" style="left:1137px;top:280px;width:105px;height:72px"><svg><use href="#i-cloud"/></svg>OpenAI API</div>
+  <div class="cmp ai" style="left:1252px;top:280px;width:105px;height:72px"><svg><use href="#i-cpu"/></svg>Piper</div>
+  <div class="cmp pend" style="left:1367px;top:280px;width:101px;height:72px"><svg><use href="#i-cpu"/></svg>Whisper local</div>
+
+  <!-- Modelos -->
+  <div class="layer" style="left:1125px;top:407px;width:355px;height:207px"><div class="lt">Modelos</div></div>
+  <div class="cmp ai" style="left:1137px;top:437px;width:160px;height:72px"><svg><use href="#i-model"/></svg>LLM de chat</div>
+  <div class="cmp ai" style="left:1308px;top:437px;width:160px;height:72px"><svg><use href="#i-model"/></svg>gpt-4o-mini-transcribe</div>
+  <div class="cmp ai" style="left:1137px;top:527px;width:160px;height:72px"><svg><use href="#i-model"/></svg><div>gpt-4o-mini-tts<span class="opt">(opcional)</span></div></div>
+  <div class="cmp ai" style="left:1308px;top:527px;width:160px;height:72px"><svg><use href="#i-model"/></svg>Voz pt-BR do Piper</div>
+
+  <!-- Faixas -->
+  <div class="band" style="left:235px;top:628px;width:1245px;height:48px;border-radius:12px 12px 0 0">
+    <div class="lt">Segurança e governança</div>
+    <div class="chip"><svg><use href="#i-key"/></svg>Token Bearer</div>
+    <div class="chip"><svg><use href="#i-shield"/></svg>Aprovação de ações sensíveis</div>
+    <div class="chip"><svg><use href="#i-lock"/></svg>OAuth com escopo mínimo</div>
+    <div class="chip"><svg><use href="#i-eye"/></svg>Segredos mascarados nos logs</div>
+    <div class="chip"><svg><use href="#i-bolt"/></svg>Circuit breaker</div>
+    <div class="chip"><svg><use href="#i-gauge"/></svg>Limites de passos, tempo e tokens</div>
+  </div>
+  <div class="band" style="left:235px;top:680px;width:1245px;height:52px;border-radius:0 0 12px 12px">
+    <div class="lt">Plataforma</div>
+    <div class="chip"><svg><use href="#i-board"/></svg>Raspberry Pi 5 · Robot e servidor</div>
+    <div class="chip pend"><svg><use href="#i-chart"/></svg>Worker na Pi · implantação pendente</div>
+    <div class="chip pend"><svg><use href="#i-laptop"/></svg>Notebook Ubuntu Server · nó de processamento</div>
+    <div class="chip"><svg><use href="#i-desk"/></svg>PC · desenvolvimento</div>
+    <div class="chip"><svg><use href="#i-py"/></svg>Python 3.13 · monólito modular</div>
+  </div>
+
+  <!-- Legenda e rodapé -->
+  <div class="legend">
+    <span><i class="sw"></i>Componente</span>
+    <span><i class="sw ai"></i>Componente de IA</span>
+    <span><i class="sw pend"></i>Decidido, ainda não implementado</span>
+    <span>(opcional) desligado por padrão e fora da implantação atual</span>
+    <span><svg width="34" height="10"><path d="M2 5h24" stroke="#8fa6c4" stroke-width="2"/><path d="M24 1l8 4-8 4z" fill="#8fa6c4"/></svg>leitura ou escrita</span>
+    <span><svg width="38" height="10"><path d="M8 5h22" stroke="#8fa6c4" stroke-width="2"/><path d="M10 1L2 5l8 4zM28 1l8 4-8 4z" fill="#8fa6c4"/></svg>leitura e escrita</span>
+  </div>
+  <div class="foot">Fontes: código da main em 6d9a410 · ADR-001 a ADR-019 · docs/runbooks · especificação técnica v1.0 (D01, D02). Origem de cada caixa e de cada seta no README desta pasta.</div>
+
+  <svg id="arrows" width="1500" height="820" viewBox="0 0 1500 820">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" fill="#8fa6c4"/>
+      </marker>
+    </defs>
+    <!-- Canais ↔ Gateway -->
+    <path d="M191 300H234" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <!-- Gateway ↔ Motor -->
+    <path d="M406 198H449" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <!-- Gateway ↔ SQLite -->
+    <path d="M406 402H464" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <!-- Motor ↔ SQLite -->
+    <path d="M520 305V364" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <!-- SQLite ↔ Worker -->
+    <path d="M520 441V486" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <!-- Painéis → Vault; Ingestão → Vault -->
+    <path d="M627 514V441" marker-end="url(#ah)"/>
+    <path d="M755 514V441" marker-end="url(#ah)"/>
+    <!-- Extração do grafo → Neo4j -->
+    <path d="M929 514V441" marker-end="url(#ah)"/>
+    <!-- Neo4j → Tool Registry (memory_search) -->
+    <path d="M987 364V275" marker-end="url(#ah)"/>
+    <!-- Tool Registry ↔ Microsoft Graph; Web → Tool Registry -->
+    <path d="M1066 136H1136" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M1136 168H1066" marker-end="url(#ah)"/>
+    <!-- Motor ↔ Provedores de IA -->
+    <path d="M1081 289H1124" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <!-- Extração e curadoria ↔ OpenAI API -->
+    <path d="M1069 550H1102V327H1136" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <!-- Provedores ↔ Modelos -->
+    <path d="M1400 373V406" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </svg>
+</div>
+<script>
+  (function () {
+    var c = document.getElementById('c');
+    function fit() {
+      var s = document.documentElement.clientWidth / 1500;
+      c.style.transform = 'scale(' + s + ')';
+      document.body.style.height = (820 * s) + 'px';
+    }
+    window.addEventListener('resize', fit);
+    fit();
+  })();
+</script>
+</body>
+</html>
