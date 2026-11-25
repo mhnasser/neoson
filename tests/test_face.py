@@ -15,6 +15,7 @@ from neoson_robot.face import (
     EXPRESSIONS,
     HOLD_TO_CLOSE,
     LAYERS,
+    MOOD,
     PET_DISTANCE,
     PROGRAM,
     REACTION,
@@ -160,6 +161,68 @@ def test_petting_lasts_while_rubbing_without_restarting() -> None:
     assert animator.frame(3.5).left.smile == 0.0  # reação já terminou
 
 
+def test_face_follows_robot_states_smoothly_and_returns_to_the_loop() -> None:
+    animator = Animator()
+    animator.frame(1.0)
+    animator.follow("listening", 10.0)
+    frames = [animator.frame(1.0 + i * 0.02) for i in range(1, 60)]
+    assert max(gap(a, b) for a, b in zip(frames, frames[1:], strict=False)) < 10
+    assert frames[-1].left.w == pytest.approx(EXPRESSIONS["escutando"].left.w, rel=0.05)
+
+    animator.follow("thinking", 120.0)
+    animator.frame(3.0)
+    assert animator.frame(3.0 + TRANSITION).left.lid == pytest.approx(
+        EXPRESSIONS["pensando"].left.lid
+    )
+    animator.follow("idle", 0.0)
+    animator.frame(4.0)
+    assert (
+        gap(animator.frame(4.0 + TRANSITION), program_face(4.0 + TRANSITION)[1]) < 1e-9
+    )
+
+    # Erro some sozinho, como o aviso do peito: o rosto não fica triste para sempre.
+    animator.follow("error", 5.0)
+    animator.frame(10.0)
+    assert animator.frame(10.0 + 1.0).left.tilt > 0
+    animator.frame(10.0 + 5.0)
+    later = 10.0 + 5.0 + TRANSITION
+    assert gap(animator.frame(later), program_face(later)[1]) < 1e-9
+
+
+def test_emoji_expression_shows_for_a_while_over_the_state() -> None:
+    animator = Animator()
+    animator.follow("speaking", 120.0)
+    animator.express("feliz")
+    animator.express("bravo")  # desconhecida: ignorada, a anterior continua
+    animator.frame(2.0)
+    assert animator.frame(2.0 + 1.0).left.smile == pytest.approx(1.0)
+    assert animator.frame(2.0 + MOOD + 0.1).left.smile == 0.0
+
+
+def test_every_robot_state_and_server_expression_exists_on_the_face() -> None:
+    from typing import get_args
+
+    from neoson_contracts.events.v1.robot import Expression, RobotState
+
+    assert set(get_args(Expression)) <= set(EXPRESSIONS)
+    for state in RobotState:
+        animator = Animator()
+        animator.follow(state, 5.0)
+        animator.frame(1.0)
+
+
+def test_upper_lid_droops_on_the_outer_side_when_sad() -> None:
+    per_eye = len(LAYERS) + 2
+    sad = scene(EXPRESSIONS["triste"], 800, 480)
+    # Pálpebra: (x0, topo), (x1, topo), (x1, y à direita), (x0, y à esquerda).
+    left, right = sad[per_eye - 1], sad[2 * per_eye - 1]
+    assert left[7] > left[5]  # olho esquerdo: o lado de fora é o da esquerda
+    assert right[5] > right[7]
+    calm = scene(EXPRESSIONS["neutro"], 800, 480)
+    glow_top = bounds(calm[0])[1]
+    assert max(calm[per_eye - 1][1::2]) <= glow_top  # neutro: toda acima do olho
+
+
 def test_animator_rejects_phases_shorter_than_the_transition() -> None:
     with pytest.raises(ValueError):
         Animator((("neutro", TRANSITION),))
@@ -170,7 +233,7 @@ def test_animator_rejects_phases_shorter_than_the_transition() -> None:
 def test_scene_scales_and_centers_on_any_screen() -> None:
     calm = EXPRESSIONS["neutro"]
     items = scene(calm, 800, 480)
-    assert len(items) == 2 * (len(LAYERS) + 1)
+    assert len(items) == 2 * (len(LAYERS) + 2)  # camadas e as duas pálpebras
     assert bounds(items[2]) == pytest.approx(bounds(eye_outline(calm.left)))
 
     double = scene(calm, 1600, 960)

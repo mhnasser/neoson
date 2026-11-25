@@ -24,6 +24,10 @@ class VoiceProgress(BaseModel):
     state: Literal["transcribing", "thinking", "using_tool"]
 
 
+# Expressão do rosto pedida por um emoji da resposta (o emoji não é falado).
+Expression = Literal["feliz", "surpreso", "triste", "carinho", "pensando"]
+
+
 class VoiceSpeech(BaseModel):
     """Uma frase da resposta já sintetizada (WAV 16 kHz), na ordem de `index`."""
 
@@ -31,6 +35,8 @@ class VoiceSpeech(BaseModel):
     type: Literal["speech"] = "speech"
     index: int = Field(ge=0, le=511)
     audio_base64: str
+    # Opcional: cliente antigo ignora, gateway antigo não manda.
+    expression: Expression | None = None
 
 
 class VoiceCompleted(BaseModel):

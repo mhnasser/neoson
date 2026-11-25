@@ -1,8 +1,9 @@
 """Rosto que acorda com "Ei NeoSon"; somente health é repetido, nunca um pedido.
 
 O rosto não mostra texto: o estado (escutando, pensando, falando) vai para o
-display do peito. O toque só faz o rosto reagir e abre a câmera; a tela só mostra
-texto no painel de aprovação.
+display do peito e muda a expressão dos olhos, assim como o emoji da frase falada.
+O toque só faz o rosto reagir e abre a câmera; a tela só mostra texto no painel
+de aprovação.
 """
 
 import argparse
@@ -58,12 +59,16 @@ NOTES = {
 
 
 class StatusDisplay:
-    """Estado do robô para o display do peito, nunca conteúdo da conversa."""
+    """Estado do robô para o display do peito e para o rosto, nunca conteúdo da
+    conversa. O rosto recebe o estado e por quanto tempo ele vale no peito."""
 
     def __init__(
-        self, path: Path | None = None, clock: Callable[[], float] = time.time
+        self,
+        path: Path | None = None,
+        clock: Callable[[], float] = time.time,
+        face: Callable[[str, float], None] | None = None,
     ) -> None:
-        self.path, self.clock = path, clock
+        self.path, self.clock, self.face = path, clock, face
         self._lock = threading.Lock()
         self._text = ""
 
@@ -73,6 +78,8 @@ class StatusDisplay:
             self._text = text
             if self.path is not None:
                 write_status(self.path, text, seconds, self.clock())
+        if self.face is not None:
+            self.face(state, LABELS[state][1])
 
     def text(self) -> str:
         with self._lock:
@@ -374,7 +381,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         url = gateway_url(args.gateway_url)
         detector = load_wake_word(args.wake_dir, args.wake_threshold)
         request = SpokenRequest(mic, args.seconds)
-        display = StatusDisplay(args.status_file)
+        animator = Animator()
+        display = StatusDisplay(args.status_file, face=animator.follow)
         token = api_token()
         with httpx2.Client(base_url=url, timeout=35, follow_redirects=False) as http:
             controller = VoiceController(
@@ -383,6 +391,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 display,
                 HttpVoiceGateway(http, token),
                 FileSessionState(args.state_file, url),
+                on_expression=animator.express,
             )
 
             def ready() -> bool:
@@ -414,7 +423,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             touch = None if args.windowed else find_touchscreen()
             try:
                 run_window(
-                    Animator(),
+                    animator,
                     30,
                     not args.windowed,
                     0,

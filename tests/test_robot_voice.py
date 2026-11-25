@@ -14,6 +14,7 @@ from starlette.requests import Request
 from neoson_contracts.api.v1.voice import VoiceResponse
 from neoson_contracts.events.v1.robot import (
     VOICE_EVENT,
+    Expression,
     RobotState,
     VoiceCompleted,
     VoiceEvent,
@@ -467,10 +468,14 @@ def test_closing_stream_cancels_server_and_releases_admission() -> None:
     asyncio.run(scenario())
 
 
-def spoken(index: int) -> VoiceSpeech:
+def spoken(index: int, expression: Expression | None = None) -> VoiceSpeech:
     # Duração diferente por frase, para conferir a ordem tocada.
     audio = pcm_wav(b"\x00\x00" * 1600 * (index + 1))
-    return VoiceSpeech(index=index, audio_base64=base64.b64encode(audio).decode())
+    return VoiceSpeech(
+        index=index,
+        audio_base64=base64.b64encode(audio).decode(),
+        expression=expression,
+    )
 
 
 class ScriptedGateway(Gateway):
@@ -601,6 +606,25 @@ def test_controller_plays_sentences_in_order_then_finishes() -> None:
     assert outcome.feedback is Feedback.NONE
 
 
+def test_controller_shows_the_sentence_expression_before_playing_it() -> None:
+    gateway, play = (
+        ScriptedGateway(spoken(0), spoken(1, "feliz"), VoiceCompleted(result=STREAMED)),
+        RecordingPlayback(),
+    )
+    seen: list[tuple[str, int]] = []
+    control = VoiceController(
+        FakeCapture(),
+        play,
+        FakeDisplay(),
+        gateway,
+        on_expression=lambda name: seen.append((name, len(play.played))),
+    )
+
+    control.interact(True)
+
+    assert seen == [("feliz", 1)]  # antes de tocar a 2ª frase
+
+
 def test_cancel_during_sentence_stops_playback_and_stream() -> None:
     control, play, _, gateway = speaking_controller(
         spoken(0), spoken(1), VoiceCompleted(result=STREAMED)
@@ -621,7 +645,7 @@ def test_partial_speech_then_synthesis_failure_reports_no_audio() -> None:
     assert len(play.played) == 1 and outcome.feedback is Feedback.NO_AUDIO
 
 
-TWO_SENTENCES = "Primeira frase completa aqui. Segunda frase também completa."
+TWO_SENTENCES = "Primeira frase completa aqui. 😊 Segunda frase também completa."
 SPEECH = {"X-Neoson-Speech": "stream"}
 
 
@@ -644,6 +668,7 @@ def test_speech_header_streams_sentences_before_result() -> None:
     assert kinds == ["speech", "speech", "result"]
     speech = [e for e in events if isinstance(e, VoiceSpeech)]
     assert [e.index for e in speech] == [0, 1]
+    assert [e.expression for e in speech] == ["feliz", None]
     for event in speech:
         check_audio(base64.b64decode(event.audio_base64))
     final = events[-1]

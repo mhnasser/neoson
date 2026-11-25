@@ -26,10 +26,33 @@ AudioStatus = Literal[
     "ready", "streamed", "synthesis_timeout", "synthesis_failed", "text_too_long"
 ]
 VoiceActivity = Literal["transcribing", "thinking", "using_tool"]
-# Recebe cada frase sintetizada (WAV 16 kHz), na ordem, com índice crescente.
-SpeechSink = Callable[[int, bytes], Awaitable[None]]
-# Fim de frase seguido de espaço (não corta "3.5") ou quebra de linha.
-SENTENCE_END = re.compile(r"[.!?…](?=\s)|\n")
+# Recebe cada frase sintetizada (WAV 16 kHz), na ordem, com índice crescente, e a
+# expressão do rosto pedida pelo primeiro emoji conhecido da frase.
+SpeechSink = Callable[[int, bytes, str | None], Awaitable[None]]
+# Emojis, símbolos e seus modificadores (tom de pele, variação, junção, bandeiras).
+EMOJI = "\U0001f000-\U0001faff⌀-⏿☀-➿⬀-⯿️‍⃣\U000e0020-\U000e007f"
+# Um emoji por vez, ou um emoticon ASCII solto entre espaços (não pega "10:30").
+EMOTES = re.compile(rf"[{EMOJI}]|(?<!\S)(?:[:;=]-?[()DPpOo/*3|]|\^_?\^|<3)(?!\S)")
+FACES = {
+    emote: face
+    for face, emotes in (
+        (
+            "feliz",
+            "😀 😃 😄 😁 😆 😂 🤣 😅 😊 🙂 ☺ 😉 😎 🥳 🎉 👍 "
+            ":) :-) :D :-D =) ;) ;-) ^^ ^_^",
+        ),
+        ("surpreso", "😮 😯 😲 😳 🤯 😱 😧 😦 😵 :O :o :-O"),
+        ("triste", "😢 😭 😞 😔 🙁 ☹ 😟 😥 😓 💔 :( :-( =("),
+        ("carinho", "🥰 😍 😘 😚 🤗 ❤ 💙 💜 💖 💕 <3 :*"),
+        ("pensando", "🤔 🧐 🤨 😕 :/ :-/"),
+    )
+    for emote in emotes.split()
+}
+# Fim de frase seguido de espaço (não corta "3.5") ou quebra de linha; o emoji logo
+# depois fica com a frase, então só corta ao ver o começo da próxima.
+SENTENCE_END = re.compile(
+    rf"[.!?…][\s{EMOJI}]*?(?=\s+[^\s{EMOJI}])|\n[\s{EMOJI}]*?(?=[^\s{EMOJI}])"
+)
 
 
 class InvalidAudio(ValueError):
@@ -144,10 +167,17 @@ def read_wav(
 
 
 def for_speech(text: str) -> str:
-    """Texto entregue à síntese, com a grafia que soa como a pronúncia certa."""
+    """Texto entregue à síntese: sem emojis (o rosto mostra) e com a grafia que soa
+    como a pronúncia certa."""
+    text = EMOTES.sub("", text)
     for pattern, spoken in PRONUNCIATIONS:
         text = pattern.sub(spoken, text)
     return text
+
+
+def expression(text: str) -> str | None:
+    """Expressão do rosto pedida pelo primeiro emoji conhecido do texto."""
+    return next((FACES[e] for e in EMOTES.findall(text) if e in FACES), None)
 
 
 class Transcriber(Protocol):
@@ -231,7 +261,7 @@ class _Streamer:
     ) -> None:
         self.pipeline, self.sink, self.deadline = pipeline, sink, deadline
         self.splitter = SentenceSplitter()
-        self.queue: asyncio.Queue[str | None] = asyncio.Queue()
+        self.queue: asyncio.Queue[tuple[str, str | None] | None] = asyncio.Queue()
         self.budget = pipeline.max_speech_chars
         self.queued = self.finished = False
         self.characters = self.index = 0
@@ -252,15 +282,16 @@ class _Streamer:
         self.flush()
 
     def _put(self, sentence: str) -> None:
-        spoken = for_speech(" ".join(sentence.split()))
-        if self.budget <= 0 or not spoken:
+        spoken = " ".join(for_speech(sentence).split())
+        # Só emoji ou pontuação: nada a falar.
+        if self.budget <= 0 or not any(ch.isalnum() for ch in spoken):
             return
         if len(spoken) > self.budget:
             # Frase cortada encerra a fala: nada de pedaços soltos depois dela.
             spoken, self.budget = speakable(spoken, self.budget), 0
         self.budget -= len(spoken)
         self.queued = True
-        self.queue.put_nowait(spoken)
+        self.queue.put_nowait((spoken, expression(sentence)))
 
     async def finish(self) -> AudioStatus:
         self.flush()
@@ -271,7 +302,8 @@ class _Streamer:
 
     async def _run(self) -> None:
         limits = self.pipeline.limits
-        while (text := await self.queue.get()) is not None:
+        while (item := await self.queue.get()) is not None:
+            text, face = item
             if self.status != "streamed" or self.seconds >= limits.max_output_seconds:
                 continue
             self.characters += len(text)
@@ -295,7 +327,7 @@ class _Streamer:
             try:
                 # Cliente que parou de ler não pode prender a vaga de voz além do prazo.
                 await asyncio.wait_for(
-                    self.sink(self.index, clip.wav),
+                    self.sink(self.index, clip.wav, face),
                     timeout=max(self.deadline - monotonic(), 0),
                 )
             except TimeoutError:

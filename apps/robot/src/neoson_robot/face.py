@@ -1,12 +1,14 @@
 """Rosto do robô na tela de 7": dois olhos animados, em tela cheia, sobre fundo preto.
 
 As expressões neutro e surpreso se repetem em loop, com transições suaves, piscadas
-e olhares. Esfregar a tela é carinho: os olhos viram arcos felizes e balançam enquanto
-o dedo se move. Três toques rápidos (dedo parado) mostram a câmera em tela cheia e dois
-voltam ao rosto; segurar 3 s com o dedo parado, ou Esc, fecha. Dedo que se move não
-conta como toque nem como segurar, então os gestos não se confundem. A lógica (formas,
-linha do tempo, cena em pixels e gestos) não depende de tela e é testada sem Tk; só
-`run_window` desenha.
+e olhares. Durante a conversa o rosto segue o estado do robô (escutando, pensando,
+falando, triste no erro, sonolento sem servidor) e um emoji da resposta muda a
+expressão por alguns segundos. Esfregar a tela é carinho: os olhos viram arcos
+felizes e balançam enquanto o dedo se move. Três toques rápidos (dedo parado)
+mostram a câmera em tela cheia e dois voltam ao rosto; segurar 3 s com o dedo
+parado, ou Esc, fecha. Dedo que se move não conta como toque nem como segurar,
+então os gestos não se confundem. A lógica (formas, linha do tempo, cena em pixels
+e gestos) não depende de tela e é testada sem Tk; só `run_window` desenha.
 Usa só a biblioteca padrão, então também roda copiado sozinho para a Pi
 (`python3 face.py`).
 """
@@ -30,6 +32,7 @@ DESIGN_W, DESIGN_H = 800.0, 480.0  # coordenadas de projeto, escaladas para a te
 TRANSITION = 0.5  # s para trocar de expressão
 BLINK = 0.18  # s de uma piscada
 REACTION = 2.5  # s de carinho depois do último movimento do dedo
+MOOD = 4.0  # s que a expressão pedida por um emoji fica no rosto
 TAP = 0.6  # toque mais curto que isso é "toque curto"
 HOLD_TO_CLOSE = 3.0
 # Caminho do dedo, em larguras de tela: STILL é o tremor de um dedo parado; cada
@@ -68,6 +71,8 @@ class Eye:
     h: float
     radius: float  # raio dos cantos; metade do menor lado = pílula ou círculo
     smile: float = 0.0  # 0..1: a pálpebra de baixo sobe e o olho vira um arco
+    lid: float = 0.0  # 0..1: quanto da altura a pálpebra de cima cobre
+    tilt: float = 0.0  # inclina a pálpebra de cima: > 0 baixa o lado de fora
 
     def moved(self, dx: float = 0.0, dy: float = 0.0) -> "Eye":
         return replace(self, x=self.x + dx, y=self.y + dy)
@@ -89,12 +94,19 @@ class Face:
 
 
 def _pair(
-    gap: float, y: float, w: float, h: float, radius: float, smile: float = 0.0
+    gap: float,
+    y: float,
+    w: float,
+    h: float,
+    radius: float,
+    smile: float = 0.0,
+    lid: float = 0.0,
+    tilt: float = 0.0,
 ) -> Face:
     center = DESIGN_W / 2
     return Face(
-        Eye(center - gap, y, w, h, radius, smile),
-        Eye(center + gap, y, w, h, radius, smile),
+        Eye(center - gap, y, w, h, radius, smile, lid, tilt),
+        Eye(center + gap, y, w, h, radius, smile, lid, tilt),
     )
 
 
@@ -103,12 +115,31 @@ EXPRESSIONS: dict[str, Face] = {
     "feliz": _pair(155, 252, 176, 176, 88, smile=1.0),
     "surpreso": _pair(160, 232, 196, 196, 98),
     "carinho": _pair(150, 256, 170, 170, 85, smile=1.0),
+    # Estados do robô (e alguns emojis da resposta).
+    "escutando": _pair(150, 236, 164, 200, 72),
+    # Olha para o alto, um olho meio fechado: "hmm".
+    "pensando": Face(
+        Eye(250, 220, 140, 140, 56, lid=0.35), Eye(550, 212, 150, 168, 60)
+    ),
+    "falando": _pair(150, 240, 150, 176, 60),
+    "triste": _pair(150, 258, 150, 150, 58, lid=0.32, tilt=0.4),
+    "sonolento": _pair(150, 256, 150, 170, 60, lid=0.55),
 }
 # Loop sem toque. Feliz e carinho ficam fora do loop; carinho é a reação a esfregar.
 PROGRAM: tuple[tuple[str, float], ...] = (
     ("neutro", 8.0),
     ("surpreso", 4.5),
 )
+# Expressão de cada estado do robô; estado fora daqui (repouso) é o loop.
+STATE_FACES = {
+    "listening": "escutando",
+    "transcribing": "pensando",
+    "thinking": "pensando",
+    "using_tool": "pensando",
+    "speaking": "falando",
+    "error": "triste",
+    "offline": "sonolento",
+}
 
 # Olhar para os lados na expressão neutra: (instante, deslocamento em x).
 _GLANCE = (
@@ -123,6 +154,14 @@ _GLANCE = (
     (6.5, 0.0),
 )
 _BLINKS = {"neutro": (1.0, 4.2, 6.9, 7.25), "surpreso": (2.4,)}
+# Estados duram o quanto for preciso: piscada a cada período (s), no instante dado.
+_REPEAT = {
+    "escutando": (3.5, 2.0),
+    "pensando": (4.0, 3.0),
+    "falando": (3.2, 1.5),
+    "triste": (4.5, 2.5),
+    "sonolento": (6.0, 4.0),
+}
 
 
 def lerp(a: float, b: float, t: float) -> float:
@@ -166,6 +205,8 @@ def mix_eye(a: Eye, b: Eye, t: float) -> Eye:
         lerp(a.h, b.h, t),
         lerp(a.radius, b.radius, t),
         lerp(a.smile, b.smile, t),
+        lerp(a.lid, b.lid, t),
+        lerp(a.tilt, b.tilt, t),
     )
 
 
@@ -215,7 +256,26 @@ def behave(name: str, u: float, duration: float) -> Face:
         # Já redondos, os olhos dão um salto rápido e voltam ao tamanho.
         pop = 1.0 + 0.12 * math.sin(math.pi * (u - TRANSITION) / 0.5)
         face = face.each(lambda eye: eye.scaled(pop))
-    factor = blink_factor(u, _BLINKS.get(name, ()))
+    elif name == "escutando":
+        # Atento: sem olhar para os lados, os olhos "respiram" devagar.
+        breath = 1.0 + 0.03 * math.sin(2 * math.pi * 0.6 * u)
+        face = face.each(lambda eye: eye.scaled(breath))
+    elif name == "pensando":
+        # Olhar para o alto, indo e voltando devagar para o lado.
+        drift = 45.0 + 12.0 * math.sin(2 * math.pi * 0.25 * u)
+        face = face.each(lambda eye: eye.moved(drift))
+    elif name == "falando":
+        # Pequenos saltos no ritmo da fala.
+        bob = abs(math.sin(math.pi * 2.6 * u)) * 6.0
+        face = face.each(lambda eye: eye.moved(dy=-bob))
+    elif name == "sonolento":
+        nod = math.sin(2 * math.pi * 0.15 * u) * 6.0  # cochilando
+        face = face.each(lambda eye: eye.moved(dy=nod))
+    if name in _REPEAT:
+        period, at = _REPEAT[name]
+        factor = blink_factor(u % period, (at,))
+    else:
+        factor = blink_factor(u, _BLINKS.get(name, ()))
     if factor < 1.0:
         face = face.each(lambda eye: eye.scaled(1.0, factor))
     return face
@@ -241,7 +301,13 @@ def program_face(
 
 
 class Animator:
-    """Linha do tempo do rosto, com o carinho por cima do programa."""
+    """Linha do tempo do rosto, em camadas: o programa em loop; no lugar dele, a
+    expressão do estado do robô enquanto ele vale; e por cima de tudo uma reação
+    curta (carinho ao esfregar ou o emoji da frase falada).
+
+    `follow` e `express` podem vir de outra thread: só guardam o pedido, que o
+    próximo quadro aplica no tempo do rosto.
+    """
 
     def __init__(self, program: Sequence[tuple[str, float]] = PROGRAM) -> None:
         if not program or any(duration <= TRANSITION for _, duration in program):
@@ -249,15 +315,43 @@ class Animator:
         self.program = tuple(program)
         self._reaction: float | None = None
         self._until = 0.0
+        self._reacting = "carinho"
+        self._asked: tuple[str | None, float] = (None, 0.0)
+        self._applied: tuple[str | None, float] | None = None
+        self._mood: str | None = None
+        self._mode: str | None = None
+        self._mode_until = self._since = 0.0
+        self._from: Face | None = None
+        self._base: Face | None = None
 
-    def react(self, t: float) -> None:
-        """Começa o carinho, ou o estende sem recomeçar se ainda estiver na tela."""
-        if self._reaction is None or not self._reaction <= t < self._until:
+    def follow(self, state: str, seconds: float) -> None:
+        """Expressão do estado do robô por até `seconds`; repouso volta ao loop."""
+        self._asked = (STATE_FACES.get(state), seconds)
+
+    def express(self, name: str) -> None:
+        """Mostra a expressão `name` por MOOD s, por cima do estado."""
+        if name in EXPRESSIONS:
+            self._mood = name
+
+    def react(self, t: float, name: str = "carinho", seconds: float = REACTION) -> None:
+        """Começa a reação, ou a estende sem recomeçar se a mesma estiver na tela."""
+        if (
+            self._reaction is None
+            or name != self._reacting
+            or not self._reaction <= t < self._until
+        ):
             self._reaction = t
-        self._until = t + REACTION
+        self._reacting, self._until = name, t + seconds
 
     def frame(self, t: float) -> Face:
-        _, face = program_face(t, self.program)
+        self._apply(t)
+        if self._mode is None:
+            face = program_face(t, self.program)[1]
+        else:
+            face = behave(self._mode, t - self._since, math.inf)
+        if self._from is not None and t - self._since < TRANSITION:
+            face = mix_face(self._from, face, ease((t - self._since) / TRANSITION))
+        self._base = face
         if self._reaction is None:
             return face
         r, left = t - self._reaction, self._until - t
@@ -265,8 +359,23 @@ class Animator:
             self._reaction = None
             return face
         weight = ease(min(1.0, r / 0.3, left / 0.4))
-        pet = behave("carinho", r + TRANSITION, self._until - self._reaction)
-        return mix_face(face, pet, weight)
+        over = behave(self._reacting, r + TRANSITION, self._until - self._reaction)
+        return mix_face(face, over, weight)
+
+    def _apply(self, t: float) -> None:
+        asked = self._asked
+        if asked is not self._applied:
+            self._applied = asked
+            mode, seconds = asked
+            if mode != self._mode:  # mesmo estado: só renova a validade
+                self._from, self._since = self._base, t
+            self._mode, self._mode_until = mode, t + seconds
+        elif self._mode is not None and t >= self._mode_until:
+            # Estado venceu (ex.: aviso de erro): volta ao loop, sem salto.
+            self._from, self._since, self._mode = self._base, t, None
+        mood, self._mood = self._mood, None
+        if mood is not None:
+            self.react(t, mood, MOOD)
 
 
 def rounded_rect(
@@ -313,11 +422,31 @@ def eyelid_box(eye: Eye) -> list[float]:
     return [eye.x - half_w, cy - half_h, eye.x + half_w, cy + half_h]
 
 
+def upper_lid(eye: Eye) -> list[float]:
+    """Pálpebra de cima: polígono preto do topo do brilho até uma linha no olho.
+
+    `lid` diz quanto da altura fica coberto e `tilt` inclina a linha (> 0 baixa o
+    lado de fora, como triste). Em lid=0 e tilt=0 fica toda acima do olho.
+    """
+    outer = LAYERS[0]
+    x0, x1 = eye.x - eye.w / 2 - outer, eye.x + eye.w / 2 + outer
+    top = eye.y - eye.h / 2 - outer
+    base = top + eye.lid * (eye.h + 2 * outer)
+    drop = eye.tilt * 0.5 * eye.h
+    # O lado de fora do olho esquerdo é o da esquerda.
+    if eye.x < DESIGN_W / 2:
+        left, right = base + drop, base - drop
+    else:
+        left, right = base - drop, base + drop
+    return [x0, top - 1, x1, top - 1, x1, right, x0, left]
+
+
 def scene(face: Face, width: float, height: float) -> list[list[float]]:
     """Coordenadas em pixels de cada item, na ordem de desenho.
 
-    Por olho: as camadas de LAYERS (polígonos) e a pálpebra (oval). O projeto de
-    800x480 é escalado para caber na tela e centralizado.
+    Por olho: as camadas de LAYERS (polígonos), a pálpebra de baixo (oval) e a de
+    cima (polígono). O projeto de 800x480 é escalado para caber na tela e
+    centralizado.
     """
     scale = min(width / DESIGN_W, height / DESIGN_H)
     ox, oy = (width - DESIGN_W * scale) / 2, (height - DESIGN_H * scale) / 2
@@ -332,6 +461,7 @@ def scene(face: Face, width: float, height: float) -> list[list[float]]:
     for eye in (face.left, face.right):
         items += [place(eye_outline(eye, grow)) for grow in LAYERS]
         items.append(place(eyelid_box(eye)))
+        items.append(place(upper_lid(eye)))
     return items
 
 
@@ -651,6 +781,7 @@ def run_window(
         for color in colors:
             items.append(canvas.create_polygon(*flat, fill=color, outline=""))
         items.append(canvas.create_oval(0, 0, 0, 0, fill=BACKGROUND, outline=""))
+        items.append(canvas.create_polygon(*flat, fill=BACKGROUND, outline=""))
     panel: list[int] = []
     if prompt is not None:
         # Criados por último: ficam por cima do rosto e do status.

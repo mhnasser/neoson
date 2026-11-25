@@ -149,6 +149,17 @@ def test_chest_gets_short_fixed_ascii_states_with_expiry(
     assert read_status(path, 1000.0 + 121) is None  # nenhum estado fica preso
 
 
+def test_face_follows_each_state_for_as_long_as_the_chest_shows_it() -> None:
+    calls: list[tuple[str, float]] = []
+    display = StatusDisplay(face=lambda state, seconds: calls.append((state, seconds)))
+
+    display.show(RobotState.LISTENING)
+    display.show(RobotState.ERROR, Feedback.ERROR)
+    display.show(RobotState.IDLE, Feedback.APPROVAL)  # aviso do peito, não do rosto
+
+    assert calls == [("listening", 120.0), ("error", 5.0), ("idle", 0.0)]
+
+
 def test_stop_cancels_pending_turn_without_capture() -> None:
     robot, capture, gateway, jobs = runtime(lambda: True)
     robot.check()

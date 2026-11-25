@@ -134,10 +134,14 @@ def voice_router(
             if not queue.full():
                 queue.put_nowait(VoiceProgress(state=state))
 
-        async def speak(index: int, wav: bytes) -> None:
+        async def speak(index: int, wav: bytes, face: str | None) -> None:
             # Fala nunca é descartada, ao contrário do progresso: espera vaga na fila.
             audio = base64.b64encode(wav).decode("ascii")
-            await queue.put(VoiceSpeech(index=index, audio_base64=audio))
+            await queue.put(
+                VoiceSpeech.model_validate(
+                    {"index": index, "audio_base64": audio, "expression": face}
+                )
+            )
 
         # Opt-in do cliente: sem o cabeçalho, o stream é o de antes (áudio no fim).
         sink = speak if request.headers.get("x-neoson-speech") == "stream" else None

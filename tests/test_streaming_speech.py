@@ -2,17 +2,22 @@
 
 import asyncio
 from collections.abc import Sequence
+from typing import get_args
 from uuid import UUID, uuid4
 
 import pytest
 
+from neoson_contracts.events.v1.robot import Expression
 from neoson_core.engine import RunResult, RunStatus, UserMessage
 from neoson_core.engine.voice import (
+    FACES,
     SentenceSplitter,
     SpeechUsage,
     VoiceLimits,
     VoicePipeline,
     VoiceResult,
+    expression,
+    for_speech,
     pcm_wav,
 )
 
@@ -68,12 +73,14 @@ async def audio() -> bytes:
 
 
 def speak(
-    pipeline: VoicePipeline,
+    pipeline: VoicePipeline, faces: list[str | None] | None = None
 ) -> tuple[VoiceResult, list[tuple[int, bytes]]]:
     received: list[tuple[int, bytes]] = []
 
-    async def sink(index: int, wav: bytes) -> None:
+    async def sink(index: int, wav: bytes, face: str | None) -> None:
         received.append((index, wav))
+        if faces is not None:
+            faces.append(face)
 
     result = asyncio.run(pipeline.process(audio, None, "dono", on_speech=sink))
     return result, received
@@ -98,6 +105,32 @@ def test_splitter_cuts_sentences_merges_short_and_keeps_decimals() -> None:
     assert pieces == ["1. Arroz\n2. Feijão"]
 
 
+def test_splitter_keeps_a_trailing_emoji_with_its_sentence() -> None:
+    splitter = SentenceSplitter()
+
+    # Depois do ponto, espera ver o que vem: um emoji ainda é desta frase.
+    assert splitter.feed("Tudo certo por aqui hoje. ") == []
+    assert splitter.feed("😊") == []
+    assert splitter.flush() == ["Tudo certo por aqui hoje. 😊"]
+
+    assert splitter.feed("Que pena que deu errado. 😢 Mas amanhã") == [
+        "Que pena que deu errado. 😢"
+    ]
+
+
+def test_emojis_and_emoticons_are_dropped_from_speech() -> None:
+    def spoken(text: str) -> str:
+        return " ".join(for_speech(text).split())
+
+    assert spoken("Oi ❤️ tudo bem :-) Até 10:30 em http://x.y ;P") == (
+        "Oi tudo bem Até 10:30 em http://x.y"
+    )
+    assert expression("Valeu 👍🏽 de verdade 😢") == "feliz"
+    assert expression("Sem expressão conhecida :P 🚀") is None
+    # O rosto do Robot conhece todas as expressões que o núcleo manda.
+    assert set(FACES.values()) == set(get_args(Expression))
+
+
 def test_splitter_cuts_long_run_on_at_comma() -> None:
     text = "a" * 150 + ", " + "b" * 108
     splitter = SentenceSplitter()
@@ -115,7 +148,7 @@ def test_first_sentence_is_spoken_before_the_run_ends() -> None:
     speech = Speech()
     engine = Engine(
         speech,
-        ["Primeira frase completa aqui. ", WAIT, "Segunda frase também completa."],
+        ["Primeira frase completa aqui. Se", WAIT, "gunda frase também completa."],
     )
 
     result, received = speak(VoicePipeline(engine, speech, speech))
@@ -136,6 +169,28 @@ def test_pronunciation_applies_per_sentence() -> None:
     speak(VoicePipeline(engine, speech, speech))
 
     assert speech.spoken == ["O Néusson chegou em casa agora."]
+
+
+def test_emoji_is_not_spoken_and_goes_with_its_sentence_as_expression() -> None:
+    speech = Speech()
+    engine = Engine(
+        speech,
+        [
+            "Que pena que deu errado. 😢 Mas",
+            " amanhã a gente tenta de novo. :) Até",
+            " logo, tudo vai dar certo! 😊",
+        ],
+    )
+    faces: list[str | None] = []
+
+    speak(VoicePipeline(engine, speech, speech), faces)
+
+    assert speech.spoken == [
+        "Que pena que deu errado.",
+        "Mas amanhã a gente tenta de novo.",
+        "Até logo, tudo vai dar certo!",
+    ]
+    assert faces == ["triste", None, "feliz"]
 
 
 def test_engine_without_streaming_falls_back_to_result_text() -> None:
@@ -251,7 +306,7 @@ def test_stalled_sink_cannot_hold_the_voice_slot() -> None:
     engine = Engine(speech, sentences)
     pipeline = VoicePipeline(engine, speech, speech, VoiceLimits(timeout_seconds=0.3))
 
-    async def stalled(index: int, wav: bytes) -> None:
+    async def stalled(index: int, wav: bytes, face: str | None) -> None:
         await asyncio.Event().wait()  # cliente que parou de ler o stream
 
     async def scenario() -> tuple[VoiceResult, VoiceResult]:

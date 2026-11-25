@@ -18,7 +18,7 @@ from neoson_core.engine import (
     Usage,
     UserMessage,
 )
-from neoson_core.engine.loop import SYSTEM_PROMPT, TOOL_UNAVAILABLE
+from neoson_core.engine.loop import SYSTEM_PROMPT, TOOL_UNAVAILABLE, VOICE_NOTE
 from neoson_core.providers.fake import ScriptedProvider, call_tool, reply
 from neoson_core.routing.rules import RulesRouter
 
@@ -69,6 +69,18 @@ def test_direct_reply_completes_with_usage_and_model() -> None:
     assert system.content.startswith(SYSTEM_PROMPT)
     assert "Hoje é " in system.content
     assert (user.role, user.content) == (Role.USER, "Olá")
+
+
+def test_voice_channel_tells_the_model_it_hears_and_speaks() -> None:
+    provider = ScriptedProvider([reply("Oi!"), reply("Oi!")])
+    agent, _ = loop(provider)
+
+    asyncio.run(agent.run(UserMessage(text="Olá", channel="voice")))
+    asyncio.run(agent.run(UserMessage(text="Olá")))
+
+    voice, typed = (request.messages[0].content for request in provider.requests)
+    assert VOICE_NOTE in voice and "microfone" in voice and "transcrito" in voice
+    assert VOICE_NOTE not in typed
 
 
 def test_tool_request_gets_an_unavailable_result_and_the_loop_continues() -> None:

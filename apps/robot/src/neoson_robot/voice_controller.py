@@ -75,6 +75,7 @@ class VoiceController:
         display: Display,
         gateway: VoiceGateway,
         sessions: SessionState | None = None,
+        on_expression: Callable[[str], None] | None = None,
     ) -> None:
         self.capture, self.playback, self.display, self.gateway = (
             capture,
@@ -83,6 +84,8 @@ class VoiceController:
             gateway,
         )
         self.sessions = sessions
+        # Expressão do rosto pedida por um emoji da frase que vai tocar.
+        self.on_expression = on_expression
         self.session_id = sessions.load() if sessions is not None else None
         self.state = RobotState.IDLE
         self._lock = Lock()
@@ -162,6 +165,8 @@ class VoiceController:
                     # Toca já; o servidor segue sintetizando as próximas frases.
                     sentence = speech_audio(event)
                     self._show(RobotState.SPEAKING)
+                    if event.expression and self.on_expression:
+                        self.on_expression(event.expression)
                     self.playback.play(sentence, stop)
                     played = True
                 elif isinstance(event, VoiceFailed):
