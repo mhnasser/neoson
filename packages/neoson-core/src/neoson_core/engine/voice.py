@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import logging
 import math
 import re
 import struct
@@ -16,6 +17,7 @@ from uuid import UUID
 from neoson_core.engine.conversation import Engine, RunResult, RunStatus, UserMessage
 from neoson_core.engine.persistence import SessionNotFound
 
+logger = logging.getLogger(__name__)
 SAMPLE_RATE = 16000
 # Grafia só para a síntese: o nome se pronuncia "Néuson"; "ss" evita que o "s" soe "z".
 # O texto continua "NeoSon".
@@ -154,6 +156,23 @@ class Transcriber(Protocol):
 
 class Synthesizer(Protocol):
     async def synthesize(self, text: str) -> bytes: ...
+
+
+class FallbackTranscriber:
+    """Usa a reserva quando o principal falha (processo ou modelo indisponível).
+
+    O prazo é o do pipeline: se o principal o esgota, não sobra tempo para a reserva.
+    """
+
+    def __init__(self, primary: Transcriber, fallback: Transcriber) -> None:
+        self.primary, self.fallback = primary, fallback
+
+    async def transcribe(self, audio: AudioClip) -> str:
+        try:
+            return await self.primary.transcribe(audio)
+        except Exception as error:
+            logger.warning("Transcrição principal falhou (%s).", type(error).__name__)
+            return await self.fallback.transcribe(audio)
 
 
 def speakable(text: str, limit: int) -> str:

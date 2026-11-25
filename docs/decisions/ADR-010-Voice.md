@@ -113,3 +113,20 @@ fornecedores, duração STT, caracteres TTS e estimativa com preços opcionais. 
 preço ou medição completa, custo desconhecido. A exportação no vault é agregada,
 sem áudio/texto; chamadas anteriores à criação de execução não são contabilizadas
 por esse registro e o painel não substitui a fatura de fornecedores.
+
+## Atualização — 2026-11-25: transcrição local e avaliação de voz
+
+A escolha de STT passa a ser independente da rota, como a de TTS, preservando o
+padrão anterior. O adaptador `whisper` roda faster-whisper num subprocesso vivo de
+outro Python, no mesmo molde do Piper: WAV pelo stdin, texto e CPU pelo stdout,
+prazo e cancelamento encerrando o processo. Não entra como extra do workspace:
+ctranslate2/onnxruntime pesariam o lock e o CI, e um processo separado é o que
+permite interromper a CPU no prazo e devolver a memória do modelo. Uma reserva
+opcional usa a OpenAI quando o Whisper falha antes do prazo; o custo continua
+registrado pelo fornecedor configurado.
+
+Antes de escolher o fornecedor, mede-se com a voz do usuário: o comando
+`neoson-voice-eval` roda o corpus gravado contra cada candidato (WER, CER,
+latência, RTF, CPU) e gera amostras cegas de síntese para notas de 1 a 5. Os
+relatórios guardam só agregados e números por clipe; áudio, texto esperado e
+transcrições não saem da pasta do corpus.

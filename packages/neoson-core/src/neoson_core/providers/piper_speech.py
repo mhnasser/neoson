@@ -88,7 +88,7 @@ class PiperSpeech:
                 )
             except BaseException as error:
                 # Pedido pela metade deixa o stdout no meio de um quadro: recomeçar.
-                await self._kill()
+                await self.close()
                 # TimeoutError herda de OSError: o prazo sobe como prazo.
                 if not isinstance(error, TimeoutError) and isinstance(
                     error, (OSError, ValueError, EOFError)
@@ -120,7 +120,7 @@ class PiperSpeech:
             raise PiperError("Piper: áudio vazio, inválido ou acima do limite.")
         return await process.stdout.readexactly(size)
 
-    async def _kill(self) -> None:
+    async def close(self) -> None:
         process, self._process = self._process, None
         if process is not None and process.returncode is None:
             with suppress(ProcessLookupError):

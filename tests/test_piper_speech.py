@@ -91,7 +91,7 @@ def test_one_helper_serves_every_sentence_and_audio_is_resampled(
         try:
             return [(await speech.synthesize(PRIVATE), pid(speech)) for _ in range(2)]
         finally:
-            await speech._kill()
+            await speech.close()
 
     (first, first_pid), (second, second_pid) = asyncio.run(run())
 
@@ -121,7 +121,7 @@ def test_bad_frames_fail_safely_and_the_next_sentence_gets_a_new_helper(
                 await speech.synthesize(bad + " " + PRIVATE)
             return str(caught.value), await speech.synthesize("depois")
         finally:
-            await speech._kill()
+            await speech.close()
 
     message, after = asyncio.run(run())
 
@@ -151,7 +151,7 @@ def test_helper_is_recreated_after_crash_timeout_and_cancel(
                 await task
             await speech.synthesize("depois do cancelamento")
         finally:
-            await speech._kill()
+            await speech.close()
 
     asyncio.run(run())
 
@@ -230,7 +230,7 @@ def test_openai_transcription_and_piper_synthesis_work_together(
             assert result.audio_status == "ready"
         finally:
             await client.close()
-            await speech._kill()
+            await speech.close()
 
     asyncio.run(run())
     assert requests == ["/v1/audio/transcriptions"]
@@ -255,6 +255,6 @@ def test_real_piper_helper_when_available() -> None:
                 for text in ("Olá, tudo bem?", "Amanhã vai fazer sol.")
             ]
         finally:
-            await speech._kill()
+            await speech.close()
 
     assert all(seconds > 0.3 for seconds in asyncio.run(run()))

@@ -177,6 +177,111 @@ de áudio adicional. Conversão/efeito são adequados para fala, não masteriza�
 O texto completo da resposta permanece no JSON/histórico; só a fala recebe
 pronúncia e corte de `NEOSON_VOICE_MAX_SPEECH_CHARS`.
 
+### Transcrição local com Whisper
+
+`NEOSON_VOICE_STT_PROVIDER` escolhe a transcrição separada da rota:
+`same` mantém o comportamento anterior (segue `NEOSON_VOICE_PROVIDER`), `openai`
+usa a API e `whisper` roda o faster-whisper no equipamento do gateway. Com
+transcrição e síntese locais, nenhuma chamada de fala vai à OpenAI e a chave não é
+exigida; `NEOSON_VOICE_PROVIDER=openai` continua sendo só o que liga a rota real.
+
+```dotenv
+NEOSON_VOICE_PROVIDER=openai
+NEOSON_VOICE_STT_PROVIDER=whisper
+NEOSON_WHISPER_MODEL=small
+NEOSON_WHISPER_PYTHON=/opt/neoson-whisper/bin/python
+NEOSON_VOICE_STT_FALLBACK_OPENAI=false
+```
+
+Como o Piper, o faster-whisper fica num Python próprio, fora do workspace (não
+entra no `uv.lock` nem no CI):
+
+```bash
+python3 -m venv /opt/neoson-whisper
+/opt/neoson-whisper/bin/pip install faster-whisper
+```
+
+`NEOSON_WHISPER_MODEL` aceita um nome (`small`, `medium`, `large-v3-turbo`...),
+baixado do Hugging Face no primeiro uso e guardado no cache do usuário, ou uma
+pasta com um modelo CTranslate2. Modelos ajustados para português publicados no
+formato do `transformers` precisam ser convertidos antes, por exemplo:
+
+```bash
+/opt/neoson-whisper/bin/pip install "transformers[torch]"
+/opt/neoson-whisper/bin/ct2-transformers-converter --model zuazo/whisper-small-pt \
+  --output_dir /srv/neoson-voices/whisper-small-pt-ct2 --quantization int8
+```
+
+O modelo roda na CPU em int8, no idioma de `NEOSON_VOICE_LANGUAGE`, com detecção de
+voz ligada (corta o silêncio do fim da gravação, onde o Whisper tende a inventar
+frases). O processo é vivo: carrega o modelo uma vez, recebe o WAV pelo stdin e
+devolve o texto pelo stdout, nunca em argumentos ou logs; stderr não é exposto. A
+primeira transcrição depois de subir o gateway paga a carga do modelo. Prazo,
+cancelamento, resposta inválida ou saída do processo o encerram (o que interrompe a
+CPU de verdade) e a próxima transcrição abre outro.
+
+Com `NEOSON_VOICE_STT_FALLBACK_OPENAI=true` (exige a chave), uma falha rápida do
+Whisper (Python sem faster-whisper, modelo ausente, processo morto) cai na
+transcrição da OpenAI; o log registra só o tipo do erro. Um Whisper travado até o
+prazo do pedido não deixa tempo para a reserva e o pedido termina em
+`transcription_timeout`. O registro de custo usa o fornecedor configurado
+(`whisper`) e o preço de `NEOSON_VOICE_STT_PRICE_PER_MINUTE_USD` também para as
+transcrições da reserva.
+
+### Avaliar transcrição e síntese
+
+`neoson-voice-eval` compara candidatos com as gravações do corpus de 30 frases
+([gravar as frases de teste](servicos-continuos.md#gravar-as-frases-de-teste)).
+Rode na máquina que vai transcrever (Pi ou notebook), com o arquivo de configuração
+do servidor:
+
+```bash
+.venv/bin/python -m neoson_gateway.voice_eval stt \
+  --corpus "$HOME/neoson-audio/sessao-01" \
+  --candidate whisper:small --candidate whisper:medium \
+  --candidate whisper:/srv/neoson-voices/whisper-small-pt-ct2 \
+  --candidate openai:gpt-4o-mini-transcribe --timeout 120
+```
+
+Cada candidato (`whisper[:modelo ou pasta]` ou `openai[:modelo]`) roda sozinho,
+montado como o gateway o montaria e sem reserva; o processo do Whisper é encerrado
+antes do próximo, para modelos grandes não disputarem a RAM. Candidatos `openai`
+enviam as gravações à API e têm custo. Métricas por candidato:
+
+- **WER/CER**: erros de palavra e de caractere sobre o texto esperado, os dois em
+  minúsculas, sem pontuação e com números por extenso ("125" = "cento e vinte e
+  cinco"); acentos contam. Falha conta como clipe inteiro errado.
+- **Latência** média e máxima, **RTF** (tempo de transcrição ÷ duração do áudio)
+  e **CPU por clipe** (só Whisper, medida no processo dele).
+- **1ª chamada**: inclui carregar o modelo e fica fora das médias.
+
+Saída: `data/voice-eval/voice-stt-<data>.json` (números por clipe, sem texto) e o
+painel `Dashboard/Voz-Transcricao.md` no vault, com a última execução, a máquina e
+o checksum do manifesto. Nada de áudio, texto esperado ou transcrição.
+
+Síntese às cegas, com notas do usuário:
+
+```bash
+.venv/bin/python -m neoson_gateway.voice_eval tts-samples \
+  --output "$HOME/neoson-audio/amostras-01"
+# Ouça amostra-01.wav a amostra-10.wav e dê nota de 1 a 5 em notas.csv.
+.venv/bin/python -m neoson_gateway.voice_eval tts-score \
+  --samples "$HOME/neoson-audio/amostras-01"
+```
+
+`tts-samples` sintetiza 5 respostas fictícias em cada candidato (`piper` e
+`openai`; `--candidate` restringe), com o modelo, a voz, o efeito e a pronúncia
+configurados, e sorteia os nomes. O gabarito fica em `.gabarito.json`: não o abra
+antes de dar as notas, nem compare tamanho ou duração dos arquivos. A pasta precisa
+ser nova e fora de qualquer Git. `tts-score` aceita `notas.csv` salvo por planilha
+(vírgula ou ponto e vírgula), exige nota de 1 a 5 em todas as amostras e grava
+`voice-tts-<data>.json` e `Dashboard/Voz-Sintese.md` com média, mínimo e máximo
+por candidato.
+
+`tests/test_whisper_speech.py` e `tests/test_voice_eval.py` usam um processo
+simulado com o mesmo protocolo e portas falsas: não comprovam modelo real, qualidade
+da transcrição ou tempo na Pi.
+
 ### Uso e custo da fala
 
 A migration 20 acrescenta `speech_usage_records`. Faça backup antes de atualizar

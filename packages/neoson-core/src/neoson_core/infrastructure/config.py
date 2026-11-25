@@ -148,6 +148,13 @@ class ServerSettings(BaseSettings):
     voice_pitch_factor: float = Field(default=1.45, ge=1, le=2)
     piper_model: Path | None = None
     piper_python: Path | None = None
+    # same segue VOICE_PROVIDER; whisper transcreve localmente com faster-whisper.
+    voice_stt_provider: Literal["same", "openai", "whisper"] = "same"
+    # Nome do modelo (small, medium, large-v3-turbo...) ou pasta CTranslate2.
+    whisper_model: str = Field(default="small", min_length=1, max_length=500)
+    whisper_python: Path | None = None
+    # Whisper indisponível (processo ou modelo) cai na transcrição da OpenAI.
+    voice_stt_fallback_openai: bool = False
     voice_stt_price_per_minute_usd: float | None = Field(
         default=None, ge=0, allow_inf_nan=False
     )

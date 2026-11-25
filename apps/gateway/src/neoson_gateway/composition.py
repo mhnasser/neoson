@@ -25,6 +25,7 @@ from neoson_core.engine.integrations import (
     IntegrationError,
 )
 from neoson_core.engine.voice import (
+    FallbackTranscriber,
     Synthesizer,
     Transcriber,
     VoiceLimits,
@@ -43,6 +44,7 @@ from neoson_core.providers.openai_provider import OpenAIProvider
 from neoson_core.providers.openai_speech import OpenAISpeech
 from neoson_core.providers.piper_speech import PiperError, PiperSpeech
 from neoson_core.providers.speech_effects import EffectSynthesizer
+from neoson_core.providers.whisper_speech import WhisperError, WhisperSpeech
 from neoson_core.routing.policy_registry import PolicyRegistry
 from neoson_core.routing.session_router import SessionRouter
 from neoson_core.skills.registry import SqliteSkillRegistry
@@ -191,60 +193,8 @@ def build_voice(settings: ServerSettings, engine: Engine) -> VoicePipeline | Non
             raise ConfigError(
                 "Voz fake exige NEOSON_LLM_PROVIDER=echo fora de produção."
             )
-    tts_provider = (
-        settings.voice_provider
-        if settings.voice_tts_provider == "same"
-        else settings.voice_tts_provider
-    )
-    factor = (
-        settings.voice_pitch_factor
-        if settings.voice_effect == "squirrel_robot"
-        else 1.0
-    )
-    speech = None
-    if settings.voice_provider == "openai" or tts_provider == "openai":
-        if settings.openai_api_key is None:
-            raise ConfigError("OPENAI_API_KEY é obrigatória para fala OpenAI.")
-        speech = OpenAISpeech.from_api_key(
-            settings.openai_api_key.get_secret_value(),
-            timeout_seconds=settings.voice_timeout_seconds,
-            stt_model=settings.voice_stt_model,
-            tts_model=settings.voice_tts_model,
-            voice=settings.voice_tts_voice,
-            language=settings.voice_language,
-            max_speech_chars=settings.voice_max_speech_chars,
-            speed=1 / factor,
-        )
-    transcriber: Transcriber
-    if settings.voice_provider == "fake":
-        transcriber = FakeSpeech()
-    else:
-        assert speech is not None
-        transcriber = speech
-    synthesizer: Synthesizer
-    if tts_provider == "piper":
-        if settings.piper_model is None:
-            raise ConfigError("NEOSON_PIPER_MODEL é obrigatório para TTS Piper.")
-        try:
-            synthesizer = PiperSpeech(
-                settings.piper_model,
-                python=str(settings.piper_python or "python3"),
-                timeout_seconds=settings.voice_timeout_seconds,
-                length_scale=factor,
-                max_speech_chars=settings.voice_max_speech_chars,
-                max_output_seconds=settings.voice_max_output_seconds,
-            )
-        except PiperError:
-            raise ConfigError(
-                "NEOSON_PIPER_MODEL exige modelo e JSON válidos."
-            ) from None
-    elif tts_provider == "openai":
-        assert speech is not None
-        synthesizer = speech
-    else:
-        synthesizer = FakeSpeech()
-    if settings.voice_effect != "none":
-        synthesizer = EffectSynthesizer(synthesizer, factor)
+    transcriber = build_transcriber(settings)
+    synthesizer = build_synthesizer(settings)
     recorder = (
         SqliteSpeechUsage(
             settings.db_path,
@@ -261,10 +211,93 @@ def build_voice(settings: ServerSettings, engine: Engine) -> VoicePipeline | Non
         limits,
         simulated=settings.voice_provider == "fake",
         max_speech_chars=settings.voice_max_speech_chars,
-        stt_provider=settings.voice_provider,
-        tts_provider=tts_provider,
+        stt_provider=_stt_provider(settings),
+        tts_provider=_tts_provider(settings),
         record_usage=recorder,
     )
+
+
+def _stt_provider(settings: ServerSettings) -> str:
+    if settings.voice_stt_provider == "same":
+        return settings.voice_provider
+    return settings.voice_stt_provider
+
+
+def _tts_provider(settings: ServerSettings) -> str:
+    if settings.voice_tts_provider == "same":
+        return settings.voice_provider
+    return settings.voice_tts_provider
+
+
+def _pitch_factor(settings: ServerSettings) -> float:
+    if settings.voice_effect == "squirrel_robot":
+        return settings.voice_pitch_factor
+    return 1.0
+
+
+def _openai_speech(settings: ServerSettings) -> OpenAISpeech:
+    if settings.openai_api_key is None:
+        raise ConfigError("OPENAI_API_KEY é obrigatória para fala OpenAI.")
+    return OpenAISpeech.from_api_key(
+        settings.openai_api_key.get_secret_value(),
+        timeout_seconds=settings.voice_timeout_seconds,
+        stt_model=settings.voice_stt_model,
+        tts_model=settings.voice_tts_model,
+        voice=settings.voice_tts_voice,
+        language=settings.voice_language,
+        max_speech_chars=settings.voice_max_speech_chars,
+        speed=1 / _pitch_factor(settings),
+    )
+
+
+def build_transcriber(settings: ServerSettings) -> Transcriber:
+    provider = _stt_provider(settings)
+    if provider == "fake":
+        return FakeSpeech()
+    if provider == "openai":
+        return _openai_speech(settings)
+    try:
+        local = WhisperSpeech(
+            settings.whisper_model,
+            python=str(settings.whisper_python or "python3"),
+            language=settings.voice_language,
+            timeout_seconds=settings.voice_timeout_seconds,
+        )
+    except WhisperError:
+        raise ConfigError("NEOSON_WHISPER_MODEL inválido.") from None
+    if not settings.voice_stt_fallback_openai:
+        return local
+    # shortcut: o custo registra só o fornecedor configurado (whisper), também nas
+    # transcrições da reserva; registrar o fornecedor por chamada se a reserva pesar.
+    return FallbackTranscriber(local, _openai_speech(settings))
+
+
+def build_synthesizer(settings: ServerSettings) -> Synthesizer:
+    provider, factor = _tts_provider(settings), _pitch_factor(settings)
+    synthesizer: Synthesizer
+    if provider == "piper":
+        if settings.piper_model is None:
+            raise ConfigError("NEOSON_PIPER_MODEL é obrigatório para TTS Piper.")
+        try:
+            synthesizer = PiperSpeech(
+                settings.piper_model,
+                python=str(settings.piper_python or "python3"),
+                timeout_seconds=settings.voice_timeout_seconds,
+                length_scale=factor,
+                max_speech_chars=settings.voice_max_speech_chars,
+                max_output_seconds=settings.voice_max_output_seconds,
+            )
+        except PiperError:
+            raise ConfigError(
+                "NEOSON_PIPER_MODEL exige modelo e JSON válidos."
+            ) from None
+    elif provider == "openai":
+        synthesizer = _openai_speech(settings)
+    else:
+        synthesizer = FakeSpeech()
+    if settings.voice_effect != "none":
+        synthesizer = EffectSynthesizer(synthesizer, factor)
+    return synthesizer
 
 
 def build_provider(settings: ServerSettings) -> LLMProvider:
