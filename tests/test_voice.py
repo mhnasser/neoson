@@ -228,17 +228,30 @@ def test_metadata_is_removed_before_transcription() -> None:
 
 @pytest.mark.parametrize("text", ["", "   ", "a" * 8001])
 def test_invalid_transcription_prevents_engine(
-    parts: tuple[Engine, Speech, VoicePipeline], text: str
+    parts: tuple[Engine, Speech, VoicePipeline], text: str, caplog: Any
 ) -> None:
     engine, speech, pipeline = parts
     speech.text = text
     response = client(pipeline).post("/api/v1/voice", content=WAV)
     assert response.status_code == 503 and not engine.received and not speech.outputs
+    assert "Voz falhou: invalid_transcription" in caplog.text
 
 
-@pytest.mark.parametrize("fault", ["stt", "stt_slow", "error", "slow", "missing"])
+@pytest.mark.parametrize(
+    "fault,logged",
+    [
+        ("stt", "speech_unavailable (RuntimeError)"),
+        ("stt_slow", "transcription_timeout"),
+        ("error", "voice_execution_failed (RuntimeError)"),
+        ("slow", "voice_execution_timeout"),
+        ("missing", None),
+    ],
+)
 def test_pre_result_errors_are_safe(
-    parts: tuple[Engine, Speech, VoicePipeline], fault: str, caplog: Any
+    parts: tuple[Engine, Speech, VoicePipeline],
+    fault: str,
+    logged: str | None,
+    caplog: Any,
 ) -> None:
     engine, speech, _ = parts
     if fault.startswith("stt"):
@@ -253,6 +266,9 @@ def test_pre_result_errors_are_safe(
     assert response.status_code == (404 if fault == "missing" else 503)
     assert PRIVATE not in response.text and PRIVATE not in caplog.text
     assert not speech.outputs
+    # Motivo no log do gateway (código e tipo do erro, nunca o conteúdo).
+    if logged is not None:
+        assert f"Voz falhou: {logged}" in caplog.text
 
 
 @pytest.mark.parametrize(

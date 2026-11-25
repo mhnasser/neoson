@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import suppress
 from uuid import UUID
@@ -31,6 +32,8 @@ from neoson_core.engine.voice import (
 )
 from neoson_gateway.actions import HTTP_OWNER
 from neoson_gateway.voice_replay import VoiceReplayGuard
+
+logger = logging.getLogger(__name__)
 
 
 def _headers(request: Request, pipeline: VoicePipeline) -> None:
@@ -72,6 +75,13 @@ async def _process(
     except SessionNotFound:
         raise HTTPException(404, "Sessão não encontrada.") from None
     except SpeechUnavailable as error:
+        # Só o código e o tipo da causa: a mensagem pode trazer a fala do usuário.
+        cause = error.__context__
+        logger.warning(
+            "Voz falhou: %s%s",
+            error.code,
+            "" if cause is None else f" ({type(cause).__name__})",
+        )
         raise HTTPException(503, error.code) from None
 
 
