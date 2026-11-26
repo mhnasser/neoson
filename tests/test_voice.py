@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import time
 import wave
 from contextlib import closing
 from dataclasses import replace
@@ -111,6 +112,20 @@ def client(pipeline: VoicePipeline) -> TestClient:
 
 async def audio() -> bytes:
     return WAV
+
+
+@pytest.mark.parametrize(("provider", "calls"), [("piper", ["Oi."]), ("openai", [])])
+def test_startup_warms_only_local_speech(provider: str, calls: list[str]) -> None:
+    speech = Speech()
+    pipeline = VoicePipeline(Engine(), speech, speech, tts_provider=provider)
+
+    with client(pipeline):
+        deadline = time.monotonic() + 0.5
+        while not speech.outputs and time.monotonic() < deadline:
+            time.sleep(0.01)  # o aquecimento roda em segundo plano
+
+    # Voz paga (OpenAI) nunca é chamada só para aquecer.
+    assert speech.outputs == calls
 
 
 def test_http_roundtrip_preserves_identity_session_and_audio(

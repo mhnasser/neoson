@@ -36,6 +36,16 @@ from neoson_gateway.voice_replay import VoiceReplayGuard
 logger = logging.getLogger(__name__)
 
 
+async def warm_speech(pipeline: VoicePipeline) -> None:
+    """Carrega a voz local antes da 1ª fala; voz paga nunca é chamada só para isso."""
+    if pipeline.tts_provider != "piper":
+        return
+    try:
+        await pipeline.synthesizer.synthesize("Oi.")
+    except Exception:
+        logger.warning("Aquecimento da voz falhou.")
+
+
 def _headers(request: Request, pipeline: VoicePipeline) -> None:
     if request.headers.get("x-neoson-activation") != "explicit":
         raise HTTPException(400, "Ativação explícita obrigatória.")

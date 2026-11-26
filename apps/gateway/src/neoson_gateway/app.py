@@ -1,6 +1,7 @@
 import asyncio
 import hmac
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import Annotated
 
@@ -24,7 +25,7 @@ from neoson_core.memory.queries import readiness
 from neoson_gateway import __version__
 from neoson_gateway.actions import HTTP_OWNER, actions_router
 from neoson_gateway.queries import QueryConfig, queries_router
-from neoson_gateway.voice import voice_router
+from neoson_gateway.voice import voice_router, warm_speech
 from neoson_gateway.voice_replay import VoiceReplayGuard
 
 health = APIRouter(prefix="/api/v1/health", tags=["health"])
@@ -121,7 +122,16 @@ def create_app(
 ) -> FastAPI:
     if not api_token:
         raise ValueError("O gateway exige um token de API.")
-    app = FastAPI(title="NeoSon Gateway", version=__version__)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Em segundo plano: a subida não espera o modelo de voz carregar.
+        warming = None if voice is None else asyncio.create_task(warm_speech(voice))
+        yield
+        if warming is not None:
+            warming.cancel()
+
+    app = FastAPI(title="NeoSon Gateway", version=__version__, lifespan=lifespan)
     app.include_router(health)
     app.include_router(messages_router(engine, api_token))
     if queries is not None:

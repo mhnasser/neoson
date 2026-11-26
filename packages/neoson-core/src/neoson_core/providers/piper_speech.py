@@ -75,8 +75,9 @@ class PiperSpeech:
             max_speech_chars,
         )
         self.max_bytes = int(rate * max_output_seconds * length_scale) * 2
-        # shortcut: sem pré-aquecimento, a 1ª fala depois de subir o gateway paga ~1 s
-        # de carga do modelo; aquecer na subida se isso incomodar.
+        # O gateway aquece na subida (`warm_speech`). shortcut: depois de falha ou
+        # cancelamento, o pedido seguinte recarrega o modelo (~1 s); recriar o processo
+        # em segundo plano se isso pesar.
         self._process: asyncio.subprocess.Process | None = None
         self._lock = asyncio.Lock()
 
