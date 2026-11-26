@@ -53,6 +53,11 @@ FACES = {
 SENTENCE_END = re.compile(
     rf"[.!?…][\s{EMOJI}]*?(?=\s+[^\s{EMOJI}])|\n[\s{EMOJI}]*?(?=[^\s{EMOJI}])"
 )
+# A 1ª frase é a que o usuário está esperando: sai curta ("Sim.", mas não "1.") ou,
+# numa frase comprida, na 1ª vírgula depois de 30 caracteres (não pega "3,5").
+FIRST_MIN_CHARS = 4
+FIRST_CLAUSE_CHARS = 30
+CLAUSE_END = re.compile(r"[,;](?= )")
 
 
 class InvalidAudio(ValueError):
@@ -226,6 +231,7 @@ class SentenceSplitter:
     def __init__(self, min_chars: int = 20, max_chars: int = 200) -> None:
         self.min_chars, self.max_chars = min_chars, max_chars
         self._buffer = ""
+        self._first = True
 
     def feed(self, text: str) -> list[str]:
         self._buffer += text
@@ -233,17 +239,27 @@ class SentenceSplitter:
         while cut := self._cut():
             sentences.append(self._buffer[:cut].strip())
             self._buffer = self._buffer[cut:]
+            self._first = False
         return sentences
 
     def flush(self) -> list[str]:
         rest, self._buffer = self._buffer.strip(), ""
+        self._first = self._first and not rest
         return [rest] if rest else []
 
     def _cut(self) -> int:
-        # Frase curta ("Claro!", "1.") junta com a próxima: entonação melhor.
-        for match in SENTENCE_END.finditer(self._buffer):
-            if len(self._buffer[: match.end()].strip()) >= self.min_chars:
-                return match.end()
+        # Depois da 1ª, frase curta ("Claro!", "1.") junta com a próxima: sem emendas.
+        minimum = FIRST_MIN_CHARS if self._first else self.min_chars
+        ends = [match.end() for match in SENTENCE_END.finditer(self._buffer)]
+        if self._first:
+            ends += [
+                match.end()
+                for match in CLAUSE_END.finditer(self._buffer)
+                if len(self._buffer[: match.end()].strip()) >= FIRST_CLAUSE_CHARS
+            ]
+        for end in sorted(ends):
+            if len(self._buffer[:end].strip()) >= minimum:
+                return end
         if len(self._buffer) <= self.max_chars:
             return 0
         head = self._buffer[: self.max_chars]

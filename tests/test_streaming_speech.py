@@ -94,7 +94,7 @@ def speak(
 def test_splitter_cuts_sentences_merges_short_and_keeps_decimals() -> None:
     splitter = SentenceSplitter()
 
-    assert splitter.feed("Claro! ") == []
+    assert splitter.feed("Bom dia. Claro! ") == ["Bom dia."]
     assert splitter.feed("O valor é 3.5 reais hoje. E amanhã") == [
         "Claro! O valor é 3.5 reais hoje."
     ]
@@ -102,9 +102,34 @@ def test_splitter_cuts_sentences_merges_short_and_keeps_decimals() -> None:
     assert splitter.flush() == []
 
     lists = SentenceSplitter()
-    pieces = lists.feed("1. Arroz\n2. Feijão\n") + lists.flush()
+    pieces = lists.feed("Sua lista:\n1. Arroz\n2. Feijão\n") + lists.flush()
     assert "1." not in pieces
-    assert pieces == ["1. Arroz\n2. Feijão"]
+    assert pieces == ["Sua lista:", "1. Arroz\n2. Feijão"]
+
+
+def test_first_chunk_is_short_but_never_a_bare_number() -> None:
+    splitter = SentenceSplitter()
+
+    assert splitter.feed("Claro! O valor é 3.5 reais hoje. E amanhã") == [
+        "Claro!",
+        "O valor é 3.5 reais hoje.",
+    ]
+
+    lists = SentenceSplitter()
+    pieces = lists.feed("1. Arroz\n2. Feijão\n") + lists.flush()
+    assert pieces == ["1. Arroz", "2. Feijão"]
+
+
+def test_first_chunk_cuts_at_clause_only_after_30_chars() -> None:
+    splitter = SentenceSplitter()
+
+    assert splitter.feed("Hoje você tem duas reuniões marcadas, uma às 10:30 e") == [
+        "Hoje você tem duas reuniões marcadas,"
+    ]
+    # Depois da 1ª, vírgula só corta passando de 200 caracteres.
+    assert splitter.feed(" outra às 15h, com o time todo, sem pressa") == []
+    # Hora e decimal não são pausa; vírgula antes de 30 caracteres também não corta.
+    assert SentenceSplitter().feed("Às 10:30, faz 3,5 graus lá fora e") == []
 
 
 def test_splitter_keeps_a_trailing_emoji_with_its_sentence() -> None:
