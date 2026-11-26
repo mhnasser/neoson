@@ -36,7 +36,7 @@ FLOOR_FRAMES = 62  # ~5 s de ruído de fundo
 MIN_SPEECH_FRAMES = 3  # 240 ms: menos que isso é estalo, não pedido
 END_SILENCE_FRAMES = 8  # ~0,64 s de silêncio encerra o pedido
 NO_SPEECH_FRAMES = 50  # ~4 s sem fala depois da wake word: volta ao repouso
-FOLLOW_UP_FRAMES = 750  # 1 min: depois de uma resposta, escuta sem a wake word
+FOLLOW_UP_FRAMES = 25  # 2 s: depois de uma resposta, escuta sem a wake word
 PRE_ROLL_FRAMES = 6  # ~0,5 s antes do começo da fala vão junto no pedido
 MAX_REQUEST_SECONDS = 15.0
 
@@ -239,7 +239,7 @@ class SpokenRequest:
         self.patience = NO_SPEECH_FRAMES  # trechos sem fala até desistir
 
     def observe(self, frame: bytes) -> None:
-        """Ruído de fundo, medido enquanto espera a wake word."""
+        """Ruído de fundo, medido enquanto espera a wake word e durante os pedidos."""
         self.levels.append(rms(frame))
 
     def threshold(self) -> float:
@@ -260,7 +260,10 @@ class SpokenRequest:
                 # Antes da fala, guarda só o começo dela: o limite vale para a fala.
                 spoken -= rms(frames.pop(0)) >= threshold
             frames.append(frame)
-            if rms(frame) >= threshold:
+            level = rms(frame)
+            # Todo trecho entra no fundo: som que não para (chuva) deixa de ser fala.
+            self.levels.append(level)
+            if level >= threshold:
                 spoken, quiet = spoken + 1, 0
             else:
                 quiet += 1
@@ -271,7 +274,9 @@ class SpokenRequest:
             waited += 1
             if waited >= self.patience:
                 raise Cancelled  # acordou, mas ninguém pediu nada
-        if spoken < MIN_SPEECH_FRAMES:
+        else:
+            # O som não parou até o limite: chuva, ventilador, TV. Não é pedido e
+            # não vai para a transcrição; o robô volta a esperar a wake word.
             raise Cancelled
         return wav(frames)
 

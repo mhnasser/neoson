@@ -1,5 +1,5 @@
 """Rosto que acorda com "Ei NeoSon" e, depois de cada resposta, segue escutando por
-1 min sem a wake word; somente health é repetido, nunca um pedido.
+2 s sem a wake word; somente health é repetido, nunca um pedido.
 
 O rosto não mostra texto: o estado (escutando, pensando, falando) vai para o
 display do peito e muda a expressão dos olhos, assim como o emoji da frase falada.

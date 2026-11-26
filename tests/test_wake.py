@@ -65,17 +65,38 @@ def test_request_ends_on_silence_and_is_a_valid_wav() -> None:
 
 
 def test_long_wait_keeps_only_the_start_of_speech() -> None:
-    # Janela de conversa: espera muito mais que o limite do pedido pela fala.
+    # Espera maior que o limite do pedido: o limite vale só para a fala.
     frames = [tone(100)] * 600 + [tone(900)] * 10 + [tone(100)] * 30
     spoken = request(frames)
-    spoken.patience = FOLLOW_UP_FRAMES
+    spoken.patience = 700
     audio = spoken.record(lambda: False)
     assert (len(audio) - 44) // FRAME_BYTES == PRE_ROLL_FRAMES + 7 + END_SILENCE_FRAMES
-    spoken = request([tone(100)] * (FOLLOW_UP_FRAMES + 5))
+
+
+def test_follow_up_window_closes_after_2_seconds_of_silence() -> None:
+    speech = [tone(900)] * 10 + [tone(100)] * 30
+    # Fala que começa em 1,76 s (vira fala aos 2 s, com 3 trechos) entra na conversa.
+    spoken = request([tone(100)] * 22 + speech)
     spoken.patience = FOLLOW_UP_FRAMES
-    with pytest.raises(Cancelled):  # ninguém falou no minuto
+    check_audio(spoken.record(lambda: False))
+    # Depois de 2 s de silêncio, só com a wake word de novo.
+    spoken = request([tone(100)] * 25 + speech)
+    spoken.patience = FOLLOW_UP_FRAMES
+    with pytest.raises(Cancelled):
         spoken.record(lambda: False)
-    assert len(spoken.mic.frames) == 5  # type: ignore[attr-defined]
+    assert len(spoken.mic.frames) == len(speech)  # type: ignore[attr-defined]
+
+
+def test_continuous_sound_is_not_a_request_and_becomes_background() -> None:
+    # Chuva começando no meio da conversa: o som nunca para até o limite do pedido.
+    rain = request([tone(900)] * 200)
+    with pytest.raises(Cancelled):  # não é pedido: nada vai para a transcrição
+        rain.record(lambda: False)
+    # O som contínuo vira ruído de fundo: chuva não abre nem segura pedidos.
+    assert rain.threshold() == pytest.approx(1800)
+    rain.mic = Frames([tone(900)] * 5 + [tone(2500)] * 10 + [tone(900)] * 30)
+    audio = rain.record(lambda: False)
+    assert (len(audio) - 44) // FRAME_BYTES == PRE_ROLL_FRAMES + 7 + END_SILENCE_FRAMES
 
 
 @pytest.mark.parametrize(
@@ -103,10 +124,11 @@ def test_threshold_follows_the_room_noise() -> None:
         noisy.record(lambda: False)
 
 
-def test_long_request_is_cut_at_the_limit_and_cancel_wins() -> None:
+def test_sound_without_pause_until_the_limit_is_dropped_and_cancel_wins() -> None:
     spoken = SpokenRequest(Frames([tone(900)] * 400), max_seconds=2)
-    audio = spoken.record(lambda: False)
-    assert (len(audio) - 44) // FRAME_BYTES == 25
+    with pytest.raises(Cancelled):  # 2 s sem nenhuma pausa: barulho, não pedido
+        spoken.record(lambda: False)
+    assert len(spoken.mic.frames) == 400 - 25  # type: ignore[attr-defined]
     with pytest.raises(Cancelled):
         request([tone(900)] * 10).record(lambda: True)
     with pytest.raises(DeviceError):
