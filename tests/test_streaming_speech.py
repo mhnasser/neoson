@@ -213,7 +213,12 @@ def test_end_of_each_model_response_speaks_pending_text() -> None:
     # O "\n" fecha a resposta que pediu a ferramenta; a próxima só vem depois dela.
     engine = Engine(
         speech,
-        ["Vou verificar sua agenda agora.", "\n", WAIT, "Você tem duas reuniões amanhã."],
+        [
+            "Vou verificar sua agenda agora.",
+            "\n",
+            WAIT,
+            "Você tem duas reuniões amanhã.",
+        ],
     )
 
     result, _ = speak(VoicePipeline(engine, speech, speech))
