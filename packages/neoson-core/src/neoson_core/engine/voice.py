@@ -278,6 +278,10 @@ class _Streamer:
             self.marks.setdefault("texto1", monotonic())
         for sentence in self.splitter.feed(piece):
             self._put(sentence)
+        # O provedor fecha cada resposta com "\n": o resto já pode ir para a síntese,
+        # sem esperar a ferramenta seguinte nem a gravação no banco.
+        if piece == "\n":
+            self.flush()
 
     def flush(self) -> None:
         for sentence in self.splitter.flush():

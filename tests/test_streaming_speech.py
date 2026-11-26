@@ -183,6 +183,23 @@ def test_streaming_logs_stage_times_without_text(
     assert PRIVATE not in caplog.text and "Primeira" not in caplog.text
 
 
+def test_end_of_each_model_response_speaks_pending_text() -> None:
+    speech = Speech()
+    # O "\n" fecha a resposta que pediu a ferramenta; a próxima só vem depois dela.
+    engine = Engine(
+        speech,
+        ["Vou verificar sua agenda agora.", "\n", WAIT, "Você tem duas reuniões amanhã."],
+    )
+
+    result, _ = speak(VoicePipeline(engine, speech, speech))
+
+    assert speech.spoken == [
+        "Vou verificar sua agenda agora.",
+        "Você tem duas reuniões amanhã.",
+    ]
+    assert result.audio_status == "streamed"
+
+
 def test_pronunciation_applies_per_sentence() -> None:
     speech = Speech()
     engine = Engine(speech, ["O NeoSon chegou em casa agora.\n"])
