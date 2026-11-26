@@ -1,6 +1,8 @@
 """Fala frase a frase enquanto o modelo escreve."""
 
 import asyncio
+import logging
+import re
 from collections.abc import Sequence
 from typing import get_args
 from uuid import UUID, uuid4
@@ -160,6 +162,25 @@ def test_first_sentence_is_spoken_before_the_run_ends() -> None:
         "Segunda frase também completa.",
     ]
     assert result.audio_status == "streamed" and result.audio is None
+
+
+def test_streaming_logs_stage_times_without_text(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    speech = Speech()
+    engine = Engine(speech, [f"Primeira frase {PRIVATE} aqui. Se", "gunda frase ok."])
+    caplog.set_level(logging.INFO, logger="neoson_core.engine.voice")
+
+    speak(VoicePipeline(engine, speech, speech))
+
+    lines = [r.getMessage() for r in caplog.records if "Voz tempos" in r.getMessage()]
+    assert len(lines) == 1
+    assert re.fullmatch(
+        r"Voz tempos \(ms\): stt=\d+ texto1=\d+ frase1=\d+/\d+c sintese1=\d+"
+        r" audio1=\d+ modelo=\d+ total=\d+",
+        lines[0],
+    )
+    assert PRIVATE not in caplog.text and "Primeira" not in caplog.text
 
 
 def test_pronunciation_applies_per_sentence() -> None:

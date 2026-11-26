@@ -1,9 +1,11 @@
 """Captura explícita; display recebe somente estados e avisos fixos."""
 
+import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from enum import StrEnum
 from threading import Lock
+from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
@@ -139,6 +141,17 @@ class VoiceController:
     def _interact(self, cancelled: Callable[[], bool] | None) -> Outcome:
         stop = cancelled or (lambda: False)
         result: VoiceResponse | None = None
+        heard, first, sentences, slack = 0.0, 0.0, 0, 0.0
+
+        def play(audio: bytes) -> None:
+            nonlocal first, sentences, slack
+            started = monotonic()
+            first = first or started
+            self.playback.play(audio, stop)
+            sentences += 1
+            # Tempo do player além do próprio áudio (WAV 16 kHz mono de 16 bits).
+            slack += max(0.0, monotonic() - started - (len(audio) - 44) / 32000)
+
         try:
             if stop():
                 raise Cancelled
@@ -148,6 +161,7 @@ class VoiceController:
                 audio = self.capture.record(stop)
             finally:
                 self.capture.stop()
+            heard = monotonic()
             if stop():
                 raise Cancelled
             check_audio(audio)
@@ -167,7 +181,7 @@ class VoiceController:
                     self._show(RobotState.SPEAKING)
                     if event.expression and self.on_expression:
                         self.on_expression(event.expression)
-                    self.playback.play(sentence, stop)
+                    play(sentence)
                     played = True
                 elif isinstance(event, VoiceFailed):
                     if event.error.message == "invalid_transcription":
@@ -190,9 +204,17 @@ class VoiceController:
             media = response_audio(result)
             if media is not None:
                 self._show(RobotState.SPEAKING)
-                self.playback.play(media, stop)
+                play(media)
             if stop():
                 raise Cancelled
+            if sentences:
+                print(
+                    f"neoson-robot: fim da fala -> 1º áudio "
+                    f"{round((first - heard) * 1000)} ms; frases {sentences}; "
+                    f"sobra da reprodução {round(slack * 1000)} ms",
+                    file=sys.stderr,
+                    flush=True,
+                )
             feedback = (
                 Feedback.APPROVAL
                 if result.status == "needs_approval"

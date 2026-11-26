@@ -267,9 +267,15 @@ class _Streamer:
         self.characters = self.index = 0
         self.seconds = 0.0
         self.status: AudioStatus = "streamed"
+        # Tempos do 1º texto, da 1ª frase e do 1º áudio, para o log de latência.
+        self.marks: dict[str, float] = {}
+        self.first_chars = 0
+        self.first_synthesis: float | None = None
         self.task = asyncio.create_task(self._run())
 
     def text(self, piece: str) -> None:
+        if piece.strip():
+            self.marks.setdefault("texto1", monotonic())
         for sentence in self.splitter.feed(piece):
             self._put(sentence)
 
@@ -290,6 +296,8 @@ class _Streamer:
             # Frase cortada encerra a fala: nada de pedaços soltos depois dela.
             spoken, self.budget = speakable(spoken, self.budget), 0
         self.budget -= len(spoken)
+        if not self.queued:
+            self.marks["frase1"], self.first_chars = monotonic(), len(spoken)
         self.queued = True
         self.queue.put_nowait((spoken, expression(sentence)))
 
@@ -307,12 +315,15 @@ class _Streamer:
             if self.status != "streamed" or self.seconds >= limits.max_output_seconds:
                 continue
             self.characters += len(text)
+            started = monotonic()
             try:
                 wav = await asyncio.wait_for(
                     self.pipeline.synthesizer.synthesize(text),
                     timeout=max(self.deadline - monotonic(), 0),
                 )
                 clip = read_wav(wav, limits, limits.max_output_seconds)
+                if self.first_synthesis is None:
+                    self.first_synthesis = monotonic() - started
             except TimeoutError:
                 self.status = "synthesis_timeout"
                 continue
@@ -333,7 +344,35 @@ class _Streamer:
             except TimeoutError:
                 self.status = "synthesis_timeout"
                 continue
+            self.marks.setdefault("audio1", monotonic())
             self.index += 1
+
+
+def _log_times(
+    started: float, heard: float, answered: float | None, streamer: _Streamer | None
+) -> None:
+    """Uma linha por turno, só com durações: nunca texto nem áudio."""
+
+    def ms(mark: float | None) -> str:
+        return "-" if mark is None else str(round((mark - started) * 1000))
+
+    marks = {} if streamer is None else streamer.marks
+    sentence, synthesis = "-", "-"
+    if streamer is not None and "frase1" in marks:
+        sentence = f"{ms(marks['frase1'])}/{streamer.first_chars}c"
+    if streamer is not None and streamer.first_synthesis is not None:
+        synthesis = str(round(streamer.first_synthesis * 1000))
+    logger.info(
+        "Voz tempos (ms): stt=%s texto1=%s frase1=%s sintese1=%s audio1=%s modelo=%s"
+        " total=%s",
+        ms(heard),
+        ms(marks.get("texto1")),
+        sentence,
+        synthesis,
+        ms(marks.get("audio1")),
+        ms(answered),
+        ms(monotonic()),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,7 +447,10 @@ class VoicePipeline:
         if self._slots.locked():
             raise SpeechUnavailable("voice_busy")
         await self._slots.acquire()
-        deadline = monotonic() + self.limits.timeout_seconds
+        started = monotonic()
+        deadline = started + self.limits.timeout_seconds
+        heard: float | None = None
+        answered: float | None = None
         result: RunResult | None = None
         streamer: _Streamer | None = None
         seconds, characters, complete = 0.0, 0, False
@@ -432,6 +474,7 @@ class VoicePipeline:
                 raise SpeechUnavailable("transcription_timeout") from None
             except Exception:
                 raise SpeechUnavailable() from None
+            heard = monotonic()
             if (
                 not isinstance(text, str)
                 or not text.strip()
@@ -462,6 +505,7 @@ class VoicePipeline:
                 raise SpeechUnavailable("voice_execution_timeout") from None
             except Exception:
                 raise SpeechUnavailable("voice_execution_failed") from None
+            answered = monotonic()
             complete = True
             if streamer is not None:
                 streamer.flush()
@@ -495,6 +539,8 @@ class VoicePipeline:
                 complete = (
                     complete and streamer.finished and streamer.status == "streamed"
                 )
+            if heard is not None:
+                _log_times(started, heard, answered, streamer)
             try:
                 if result is not None and self.record_usage is not None:
                     await self.record_usage(

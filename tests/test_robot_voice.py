@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -606,6 +607,20 @@ def test_controller_plays_sentences_in_order_then_finishes() -> None:
     states = [state.value for state, _ in display.frames]
     assert states[-5:] == ["thinking", "speaking", "using_tool", "speaking", "idle"]
     assert outcome.feedback is Feedback.NONE
+
+
+def test_robot_reports_time_to_first_audio(capsys: pytest.CaptureFixture[str]) -> None:
+    control, _, _, _ = speaking_controller(
+        spoken(0), spoken(1), VoiceCompleted(result=STREAMED)
+    )
+
+    control.interact(True)
+
+    assert re.search(
+        r"neoson-robot: fim da fala -> 1º áudio \d+ ms; frases 2;"
+        r" sobra da reprodução \d+ ms",
+        capsys.readouterr().err,
+    )
 
 
 def test_controller_shows_the_sentence_expression_before_playing_it() -> None:
