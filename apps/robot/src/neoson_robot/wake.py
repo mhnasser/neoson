@@ -261,12 +261,12 @@ class SpokenRequest:
                 spoken -= rms(frames.pop(0)) >= threshold
             frames.append(frame)
             level = rms(frame)
-            # Todo trecho entra no fundo: som que não para (chuva) deixa de ser fala.
-            self.levels.append(level)
             if level >= threshold:
                 spoken, quiet = spoken + 1, 0
             else:
                 quiet += 1
+                # Só o que não é fala entra no fundo: fala longa não sobe o limiar.
+                self.levels.append(level)
             if spoken >= MIN_SPEECH_FRAMES:
                 if quiet >= END_SILENCE_FRAMES:
                     break
@@ -275,8 +275,9 @@ class SpokenRequest:
             if waited >= self.patience:
                 raise Cancelled  # acordou, mas ninguém pediu nada
         else:
-            # O som não parou até o limite: chuva, ventilador, TV. Não é pedido e
-            # não vai para a transcrição; o robô volta a esperar a wake word.
+            # O som não parou até o limite: chuva, ventilador, TV. Não é pedido e não
+            # vai para a transcrição; vira o ruído de fundo e o robô volta ao repouso.
+            self.levels.extend(rms(f) for f in frames)
             raise Cancelled
         return wav(frames)
 

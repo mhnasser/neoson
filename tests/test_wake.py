@@ -124,6 +124,13 @@ def test_threshold_follows_the_room_noise() -> None:
         noisy.record(lambda: False)
 
 
+def test_long_speech_does_not_raise_the_threshold_for_the_next_turn() -> None:
+    # Pedido de ~5 s de fala: a própria fala não pode virar ruído de fundo.
+    spoken = request([tone(100)] * 3 + [tone(900)] * 60 + [tone(100)] * 30)
+    check_audio(spoken.record(lambda: False))
+    assert spoken.threshold() == 250
+
+
 def test_sound_without_pause_until_the_limit_is_dropped_and_cancel_wins() -> None:
     spoken = SpokenRequest(Frames([tone(900)] * 400), max_seconds=2)
     with pytest.raises(Cancelled):  # 2 s sem nenhuma pausa: barulho, não pedido
