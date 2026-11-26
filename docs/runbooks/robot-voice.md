@@ -40,8 +40,9 @@ Na sessão gráfica da Pi, com Tk/PipeWire e o ambiente privado do Robot carrega
 ```
 
 Diga **"Ei NeoSon"**; quando o display do peito mostrar **Escutando...**, faça o pedido.
-O pedido termina com cerca de 1 s de silêncio (no máximo `--seconds`, padrão 12, até
-15 s). Sem fala em ~4 s depois da wake word, o robô volta ao repouso sem enviar nada.
+O pedido termina com cerca de 0,64 s de silêncio (no máximo `--seconds`, padrão 12,
+até 15 s); se cortar quem pausa no meio da frase, subir `END_SILENCE_FRAMES` em
+`wake.py` para 10 (0,8 s). Sem fala em ~4 s depois da wake word, o robô volta ao repouso sem enviar nada.
 Depois de cada resposta falada, o robô continua escutando por 1 minuto sem a wake word
 (rosto "escutando" e `Escutando...` no peito): é só continuar a conversa. Ruído que a
 transcrição não entende volta ao repouso sem aviso de erro. Em repouso, o rosto fica
