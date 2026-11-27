@@ -15,6 +15,7 @@ class DocumentHit:
     title: str
     ingested_at: datetime
     snippet: str
+    page: int | None = None
 
 
 class DocumentSearch(Protocol):

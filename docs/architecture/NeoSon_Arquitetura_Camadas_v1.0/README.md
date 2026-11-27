@@ -92,7 +92,7 @@ Caminhos de código relativos a `apps/<app>/src/neoson_<app>/` ou
 |---|---|---|
 | Uso e custo | Registra tokens e custo de cada execução | `telemetry/usage.py`; worker `main.py` (`build_handlers`) |
 | Painéis do vault | Atualiza os painéis de métricas, memória, skills, roteamento e voz | `telemetry/vault.py`, `memory/vault_export.py`, `telemetry/router_vault.py` |
-| Ingestão de documentos | Guarda o texto de documentos e gera notas no vault | `neoson-docs` (worker `docs_main.py`, `memory/documents.py`); [ADR-019](../../decisions/ADR-019-Document-Ingestion.md), [documentos](../../runbooks/documentos.md) |
+| Ingestão de documentos | Ingere texto e extrai PDFs em fila com páginas e qualidade; gera notas no vault | `neoson-docs` (worker `docs_main.py`, `memory/documents.py`); [ADR-019](../../decisions/ADR-019-Document-Ingestion.md), [documentos](../../runbooks/documentos.md) |
 | Extração do grafo (opcional) | Extrai fatos das memórias com o modelo; ficam pendentes até revisão | `neoson-graph` (worker `graph_main.py`, `memory/graph_extraction.py`), `NEOSON_MEMORY_GRAPH_ENABLED`; [ADR-015](../../decisions/ADR-015-Graph-Extraction.md) |
 | Curadoria de skills (opcional) | Gera propostas de melhoria sem ativá-las | `neoson-curator` (worker `curation_main.py`, `skills/curation.py`), `NEOSON_CURATION_ENABLED`; [ADR-008](../../decisions/ADR-008-Propostas-Skills.md) |
 

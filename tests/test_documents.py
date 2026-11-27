@@ -95,7 +95,7 @@ def test_ingest_preserves_original_writes_inert_note_and_is_idempotent(
 @pytest.mark.parametrize(
     ("name", "content", "message"),
     [
-        ("dados.pdf", "texto", ".md, .markdown ou .txt"),
+        ("dados.pdf", "texto", "assinatura"),
         ("vazio.md", "", "vazio"),
         ("espacos.txt", "   \n\n ", "não tem texto"),
         ("binario.md", b"abc\x00def", "binário"),

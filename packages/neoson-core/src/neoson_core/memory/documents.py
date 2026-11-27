@@ -7,6 +7,7 @@ links e embeds do Obsidian.
 """
 
 import hashlib
+import math
 import os
 import re
 import sqlite3
@@ -36,9 +37,24 @@ class DocumentLimits:
     max_bytes: int = 2_000_000
     max_chars: int = 200_000
     chunk_chars: int = 3000
+    pdf_max_bytes: int = 20_000_000
+    max_pages: int = 200
+    extract_timeout_seconds: float = 60
 
     def __post_init__(self) -> None:
-        if min(self.max_bytes, self.max_chars, self.chunk_chars) < 1:
+        if not math.isfinite(self.extract_timeout_seconds):
+            raise ValueError("Prazo de extração precisa ser finito.")
+        if (
+            min(
+                self.max_bytes,
+                self.max_chars,
+                self.chunk_chars,
+                self.pdf_max_bytes,
+                self.max_pages,
+                self.extract_timeout_seconds,
+            )
+            < 1
+        ):
             raise ValueError("Limites de documento precisam ser positivos.")
 
 
@@ -49,6 +65,7 @@ class IngestResult:
     chunks: int
     created: bool
     note: Path
+    extraction_state: str = "completed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +76,8 @@ class DocumentInfo:
     chars: int
     chunks: int
     ingested_at: str
+    extraction_state: str = "completed"
+    extraction_error: str | None = None
 
 
 def normalize(text: str) -> str:
@@ -139,6 +158,10 @@ class DocumentStore:
             migrate(c)
 
     def ingest(self, path: Path, *, extract: bool) -> IngestResult:
+        if path.suffix.lower() == ".pdf":
+            from neoson_core.memory.document_jobs import register_pdf
+
+            return register_pdf(self, path, extract=extract)
         extension = EXTENSIONS.get(path.suffix.lower())
         if extension is None:
             raise DocumentRejected("Use um arquivo .md, .markdown ou .txt.")
@@ -151,6 +174,8 @@ class DocumentStore:
             raise DocumentRejected("Arquivo vazio.")
         if len(data) > self.limits.max_bytes:
             raise DocumentRejected("Arquivo acima do limite de tamanho.")
+        if data.startswith((b"%PDF-", b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")):
+            raise DocumentRejected("Tipo não corresponde à extensão.")
         text = read_text(data)
         if not text:
             raise DocumentRejected("O arquivo não tem texto.")
@@ -221,9 +246,12 @@ class DocumentStore:
     def list(self) -> list[DocumentInfo]:
         with self._connection() as c:
             rows = c.execute(
-                "SELECT d.id, d.title, d.status, d.chars, d.ingested_at,"
+                "SELECT d.id, d.title, d.status, d.chars, d.ingested_at, "
+                "d.extraction_state,"
                 " (SELECT COUNT(*) FROM document_chunks k WHERE k.document_id = d.id)"
-                " AS chunks FROM documents d ORDER BY d.ingested_at DESC, d.id"
+                " AS chunks, (SELECT last_error FROM document_extraction_jobs j"
+                " WHERE j.document_id=d.id) AS extraction_error"
+                " FROM documents d ORDER BY d.ingested_at DESC, d.id"
             ).fetchall()
         return [
             DocumentInfo(
@@ -233,6 +261,8 @@ class DocumentStore:
                 r["chars"],
                 r["chunks"],
                 r["ingested_at"],
+                r["extraction_state"],
+                r["extraction_error"],
             )
             for r in rows
         ]
@@ -248,6 +278,11 @@ class DocumentStore:
             ).fetchone()
             if row is None:
                 return False
+            c.execute(
+                "UPDATE document_extraction_jobs SET status = 'stale', lease_id = NULL"
+                " WHERE document_id = ? AND status IN ('pending', 'leased')",
+                (document_id,),
+            )
             count = c.execute(
                 "SELECT COUNT(*) FROM document_chunks WHERE document_id = ?",
                 (document_id,),

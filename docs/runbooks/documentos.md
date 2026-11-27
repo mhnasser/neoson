@@ -1,7 +1,8 @@
 # Documentos: ingerir, revisar e esquecer
 
-`neoson-docs` traz arquivos de texto para o NeoSon
-([ADR-019](../decisions/ADR-019-Document-Ingestion.md)). Enquanto o comando não estiver
+`neoson-docs` traz arquivos de texto e PDFs para o NeoSon
+([ADR-019](../decisions/ADR-019-Document-Ingestion.md),
+[ADR-021](../decisions/ADR-021-Multimodal-Ingestion.md)). Enquanto o comando não estiver
 instalado no ambiente, use `uv run --no-sync python -m neoson_worker.docs_main`.
 
 ## Ingerir
@@ -27,6 +28,32 @@ O que acontece:
 Documentos de terceiros podem conter instruções para o modelo. Elas nunca são
 executadas: a extração não tem ferramentas e todo fato fica pendente até a sua revisão.
 
+## PDFs: fila e extração local
+
+Instale o extra opcional no ambiente parado de processamento:
+
+```bash
+uv sync --locked --all-packages --extra documents
+uv run --no-sync python -m neoson_worker.docs_main ingest ./notas/plano.pdf
+uv run --no-sync python -m neoson_worker.docs_main process --once
+```
+
+O registro confere assinatura, tamanho e hash e devolve `pending`. `process --once`
+processa no máximo um documento; sem `--once`, acompanha a fila. O instalador oferece
+o serviço opcional `documents`. Nenhum processo é iniciado pela ingestão.
+
+O parser executa em um filho com diretório temporário e ambiente sem credenciais,
+sem abrir banco, vault ou conexões de rede. No Linux, memória limitada a 512 MiB e
+CPU limitada ao prazo configurado; no Windows, vale o timeout do processo.
+Uma extração por vez, lease por reserva e até três tentativas em caso de timeout.
+Falhas definitivas ficam registradas sem publicar trechos parciais. `list` mostra
+o estado da extração; ingerir novamente não cria outro job.
+
+Cada trecho guarda sua página, também exibida pela `memory_search`. Páginas vazias ou com menos de 20 caracteres
+ficam marcadas para OCR e no resumo de qualidade e aguardam a rota de OCR. Nesta etapa não há OCR nem
+envio de documentos para modelos externos. PDFs cifrados são recusados; tabelas e
+colunas podem sair fora de ordem. O conteúdo fica como texto inerte no vault.
+
 ## Listar e esquecer
 
 ```bash
@@ -45,6 +72,12 @@ fica como `forgotten` e o mesmo arquivo não pode ser ingerido de novo.
 | `NEOSON_DOCUMENT_MAX_BYTES` | 2000000 |
 | `NEOSON_DOCUMENT_MAX_CHARS` | 200000 |
 | `NEOSON_DOCUMENT_CHUNK_CHARS` | 3000 (cada trecho também precisa caber no limite de entrada da extração) |
+| `NEOSON_DOCUMENT_PDF_MAX_BYTES` | 20000000 |
+| `NEOSON_DOCUMENT_MAX_PAGES` | 200 |
+| `NEOSON_DOCUMENT_EXTRACT_TIMEOUT_SECONDS` | 60 |
 
 `neoson-backup` copia o banco, o vault e a pasta dos originais (`NEOSON_DOCUMENTS_PATH`).
-A migração 18 roda na abertura do banco; faça backup antes de atualizar.
+As migrações rodam na abertura do banco. A versão 22 amplia os documentos e mantém
+os IDs, trechos, fatos e índice de busca existentes. Pare os escritores e faça
+backup verificado antes de atualizar a instalação real. Para reverter, use o
+backup anterior com o código anterior; não abra o banco novo com código antigo.

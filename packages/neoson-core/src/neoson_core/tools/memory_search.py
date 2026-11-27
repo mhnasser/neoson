@@ -171,6 +171,7 @@ class MemorySearch(Tool[MemorySearchArguments]):
                     "title": hit.title,
                     "ingested_at": hit.ingested_at.isoformat(),
                     "snippet": hit.snippet,
+                    **({"page": hit.page} if hit.page is not None else {}),
                 }
                 for hit in documents
             ]
@@ -180,8 +181,10 @@ class MemorySearch(Tool[MemorySearchArguments]):
                     f"- {hit.title} [ingerido em "
                     f"{hit.ingested_at.astimezone(self._zone):%Y-%m-%d}, "
                     # JSON escapa quebras/controles: o documento não forja seções.
-                    f"fonte {hit.source_id}]: "
-                    f"{json.dumps(hit.snippet, ensure_ascii=False)}"
+                    f"fonte {hit.source_id}"
+                    + (f", página {hit.page}" if hit.page is not None else "")
+                    + "]: "
+                    + json.dumps(hit.snippet, ensure_ascii=False)
                     for hit in documents
                 )
             )

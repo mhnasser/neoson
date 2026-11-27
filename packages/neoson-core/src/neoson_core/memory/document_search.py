@@ -47,7 +47,7 @@ class SqliteDocumentSearch:
             return []
         with closing(self._connection()) as connection:
             rows = connection.execute(
-                "SELECT d.id, d.title, d.ingested_at, c.n,"
+                "SELECT d.id, d.title, d.ingested_at, c.n, c.page,"
                 " snippet(document_chunks_fts, 0, '«', '»', '…', 24) AS snippet"
                 " FROM document_chunks_fts JOIN document_chunks c"
                 " ON c.rowid = document_chunks_fts.rowid"
@@ -62,6 +62,7 @@ class SqliteDocumentSearch:
                 row["title"],
                 datetime.fromisoformat(row["ingested_at"]),
                 row["snippet"][:512],
+                row["page"],
             )
             for row in rows
         ]

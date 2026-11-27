@@ -168,8 +168,9 @@ Documentação interativa (OpenAPI) em `/docs`.
 
 ### Documentos
 
-`neoson-docs` ingere arquivos `.md` e `.txt`: preserva o original pelo hash, cria uma nota
-inerte no vault e, com o grafo ligado, propõe fatos para revisão. Veja
+`neoson-docs` ingere texto e enfileira PDFs com o extra opcional `documents`:
+preserva o original pelo hash, extrai em processo separado e cria uma nota inerte
+com qualidade e página de origem. Com o grafo ligado, propõe fatos para revisão. Veja
 [`docs/runbooks/documentos.md`](docs/runbooks/documentos.md).
 
 ### Logs e resiliência

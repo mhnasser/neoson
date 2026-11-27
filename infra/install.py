@@ -21,6 +21,7 @@ SERVICES = {
     "gateway": ("neoson-gateway", "neoson_gateway.main"),
     "worker": ("neoson-worker", "neoson_worker.main"),
     "graph": ("neoson-worker", "neoson_worker.graph_main", "run"),
+    "documents": ("neoson-worker", "neoson_worker.docs_main", "process"),
     "robot-touch": ("neoson-robot", "neoson_robot.touch_voice"),
 }
 

@@ -74,6 +74,9 @@ class ServerSettings(BaseSettings):
     document_max_bytes: int = Field(default=2_000_000, ge=1024, le=20_000_000)
     document_max_chars: int = Field(default=200_000, ge=100, le=2_000_000)
     document_chunk_chars: int = Field(default=3000, ge=200, le=20_000)
+    document_pdf_max_bytes: int = Field(default=20_000_000, ge=1024, le=20_000_000)
+    document_max_pages: int = Field(default=200, ge=1, le=200)
+    document_extract_timeout_seconds: float = Field(default=60, ge=1, le=300)
 
     primary_model_profile: str = "balanced"
     router_policy: str = "rules-v1"

@@ -34,19 +34,19 @@ jobs:
         run: uv python install
 
       - name: Instalar workspace
-        run: uv sync --locked --all-packages
+        run: uv sync --locked --all-packages --extra documents
 
       - name: Ruff (lint)
-        run: uv run --locked --all-packages ruff check .
+        run: uv run --locked --all-packages --extra documents ruff check .
 
       - name: Ruff (formatação)
-        run: uv run --locked --all-packages ruff format --check .
+        run: uv run --locked --all-packages --extra documents ruff format --check .
 
       - name: mypy
-        run: uv run --locked --all-packages mypy
+        run: uv run --locked --all-packages --extra documents mypy
 
       - name: Import Linter
-        run: uv run --locked --all-packages lint-imports
+        run: uv run --locked --all-packages --extra documents lint-imports
 
       - name: pytest
-        run: uv run --locked --all-packages pytest
+        run: uv run --locked --all-packages --extra documents pytest

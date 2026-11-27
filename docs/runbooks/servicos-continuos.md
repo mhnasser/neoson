@@ -8,6 +8,7 @@ substitui unidades existentes. Use a conta que vai executar o NeoSon.
 |---|---|---|
 | `gateway` | `python -m neoson_gateway.main` | API contínua |
 | `worker` | `python -m neoson_worker.main` | outbox contínua |
+| `documents` | `python -m neoson_worker.docs_main process` | extração local de documentos, exige extra `documents` |
 | `graph` | `python -m neoson_worker.graph_main run` | extração contínua, exige configuração do grafo |
 | `robot` | `python -m neoson_robot.voice_main --device pipewire --activate` | uma captura por início manual |
 | `robot-touch` | `python -m neoson_robot.touch_voice` | rosto contínuo, acorda com "Ei NeoSon" |

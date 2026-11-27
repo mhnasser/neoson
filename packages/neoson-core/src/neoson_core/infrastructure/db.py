@@ -73,14 +73,26 @@ def migrate(connection: sqlite3.Connection) -> list[int]:
     for migration in migrations():
         if migration.version in applied:
             continue
-        with transaction(connection):
-            for statement in _statements(migration.sql):
-                connection.execute(statement)
-            connection.execute(
-                "INSERT INTO schema_migrations (version, name, applied_at)"
-                " VALUES (?, ?, ?)",
-                (migration.version, migration.name, now_iso()),
-            )
+        rebuild = migration.sql.startswith("-- foreign_keys: off\n")
+        if rebuild:
+            connection.execute("PRAGMA foreign_keys = OFF")
+        try:
+            with transaction(connection):
+                for statement in _statements(migration.sql):
+                    connection.execute(statement)
+                if (
+                    rebuild
+                    and connection.execute("PRAGMA foreign_key_check").fetchone()
+                ):
+                    raise RuntimeError("Migração deixou referências inválidas.")
+                connection.execute(
+                    "INSERT INTO schema_migrations (version, name, applied_at)"
+                    " VALUES (?, ?, ?)",
+                    (migration.version, migration.name, now_iso()),
+                )
+        finally:
+            if rebuild:
+                connection.execute("PRAGMA foreign_keys = ON")
         newly_applied.append(migration.version)
     return newly_applied
 

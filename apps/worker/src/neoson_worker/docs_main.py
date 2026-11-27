@@ -1,10 +1,12 @@
 """Ingestão local de documentos de texto; mostra só IDs, títulos e contagens."""
 
 import argparse
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
 from neoson_core.infrastructure.config import ConfigError, ServerSettings, load_settings
+from neoson_core.memory.document_jobs import DocumentExtractor
 from neoson_core.memory.documents import DocumentLimits, DocumentRejected, DocumentStore
 from neoson_worker.panels import refresh_memory_panel
 
@@ -18,6 +20,9 @@ def store_for(settings: ServerSettings) -> DocumentStore:
             max_bytes=settings.document_max_bytes,
             max_chars=settings.document_max_chars,
             chunk_chars=settings.document_chunk_chars,
+            pdf_max_bytes=settings.document_pdf_max_bytes,
+            max_pages=settings.document_max_pages,
+            extract_timeout_seconds=settings.document_extract_timeout_seconds,
         ),
     )
 
@@ -25,17 +30,34 @@ def store_for(settings: ServerSettings) -> DocumentStore:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="neoson-docs")
     commands = parser.add_subparsers(dest="command", required=True)
-    ingest = commands.add_parser("ingest", help="ingere um arquivo .md ou .txt")
+    ingest = commands.add_parser("ingest", help="ingere texto ou enfileira um PDF")
     ingest.add_argument("path", type=Path)
     commands.add_parser("list", help="lista os documentos ingeridos")
     forget = commands.add_parser("forget", help="esquece um documento pelo ID")
     forget.add_argument("id")
+    process = commands.add_parser("process", help="processa a fila de extração local")
+    process.add_argument(
+        "--once", action="store_true", help="processa no máximo um documento"
+    )
     args = parser.parse_args(argv)
     try:
         settings = load_settings()
         store = store_for(settings)
     except ConfigError as error:
         raise SystemExit(str(error)) from None
+    if args.command == "process":
+        extractor = DocumentExtractor(store)
+        try:
+            while True:
+                worked = extractor.process_once()
+                if worked:
+                    refresh_memory_panel(settings)
+                if args.once:
+                    return 0
+                if not worked:
+                    time.sleep(settings.worker_poll_seconds)
+        except KeyboardInterrupt:
+            return 0
     if args.command == "ingest":
         try:
             # Fatos só com o grafo ligado; o worker de extração os processa depois.
@@ -45,6 +67,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         refresh_memory_panel(settings)
         state = "ingerido" if result.created else "já existia"
         print(f"{result.id} | {state} | {result.chunks} trecho(s) | {result.title}")
+        if result.extraction_state != "completed":
+            print(
+                f"Extração: {result.extraction_state}. Use neoson-docs process --once."
+            )
         if result.created and not settings.memory_graph_enabled:
             print("Grafo desligado: nenhum fato será extraído deste documento.")
         return 0
@@ -56,6 +82,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 f"{doc.id} | {doc.status} | {doc.chars} caracteres | "
                 f"{doc.chunks} trecho(s) | {doc.ingested_at[:10]} | {doc.title}"
+                f" | extração {doc.extraction_state}"
+                + (f" | motivo {doc.extraction_error}" if doc.extraction_error else "")
             )
         return 0
     if not store.forget(args.id):
