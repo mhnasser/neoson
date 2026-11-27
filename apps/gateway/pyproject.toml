@@ -15,7 +15,6 @@ dependencies = [
 
 [project.scripts]
 neoson-gateway = "neoson_gateway.main:main"
-neoson-telegram = "neoson_gateway.telegram_main:main"
 neoson-skills = "neoson_gateway.skills_main:main"
 neoson-personal = "neoson_gateway.personal_main:main"
 neoson-voice-eval = "neoson_gateway.voice_eval:main"

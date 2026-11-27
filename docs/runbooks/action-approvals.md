@@ -17,7 +17,7 @@ Restaurar um snapshot também restaura seus estados de aprovação. Antes de ret
 ações de um backup, reconcilie os efeitos posteriores ao snapshot no destino; uma
 cópia antiga pode ainda mostrar como aprovada uma ação já executada. A integração real
 precisa preservar a mesma chave de idempotência no fornecedor mesmo após restauração.
-Reinicie o gateway para carregar as rotas. Não inicie outro polling do Telegram.
+Reinicie o gateway para carregar as rotas.
 
 ## Consultar e decidir
 
@@ -49,7 +49,7 @@ não pode ser liberada por outra decisão.
 O proprietário vem da autenticação do servidor; o cliente não pode informar principal.
 O painel da tela touch do Robot usa estas mesmas rotas com o token que o Robot já tem
 (veja [voz no Robot](robot-voice.md#aprovar-na-tela-touch)).
-Esta instalação não oferece isolamento multiusuário nem consentimento pelo Telegram.
+Esta instalação não oferece isolamento multiusuário.
 Canais sem principal confiável continuam suspendendo de forma segura, sem uma ação
 retomável. Aprovar um caso novo não autoriza outros pedidos, outras sessões ou chamadas
 posteriores do modelo, mesmo com argumentos iguais.

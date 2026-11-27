@@ -35,7 +35,6 @@ hardlinks nelas.
 ```bash
 uv run --package neoson-gateway neoson-gateway   # padrão: http://127.0.0.1:8000 (NEOSON_GATEWAY_*)
 uv run --package neoson-worker neoson-worker    # consome a outbox (--once: processa e sai)
-uv run --package neoson-gateway neoson-telegram # canal Telegram (long polling)
 uv run --package neoson-robot neoson-robot "Olá, NeoSon"   # envia uma mensagem e mostra a resposta
 ```
 
@@ -88,11 +87,6 @@ No peito do Robot, o `neoson-chest` mostra uso e temperatura da CPU e uso da RAM
 por I2C; veja o [runbook do display do peito](docs/runbooks/display-do-peito.md). Na tela de 7",
 o `neoson-face` mostra o rosto animado do robô em tela cheia; veja o
 [runbook do rosto](docs/runbooks/rosto-do-robo.md).
-
-O `neoson-telegram` conversa pelo Telegram com o mesmo motor e o mesmo banco do gateway. Ele só
-responde em chat privado a usuários listados em `NEOSON_TELEGRAM_ALLOWED_USERS` (IDs numéricos)
-e precisa de `NEOSON_TELEGRAM_BOT_TOKEN` (criado no @BotFather). Cada chat tem a sua sessão;
-`/nova` começa outra conversa.
 
 O gateway exige `NEOSON_API_TOKEN`, e o robô envia o mesmo token (`Authorization: Bearer`). Para
 continuar uma conversa, use `--show-session` e depois `--session-id <id>`.

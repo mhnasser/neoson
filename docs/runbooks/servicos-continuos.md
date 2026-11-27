@@ -8,7 +8,6 @@ substitui unidades existentes. Use a conta que vai executar o NeoSon.
 |---|---|---|
 | `gateway` | `python -m neoson_gateway.main` | API contínua |
 | `worker` | `python -m neoson_worker.main` | outbox contínua |
-| `telegram` | `python -m neoson_gateway.telegram_main` | polling contínuo |
 | `graph` | `python -m neoson_worker.graph_main run` | extração contínua, exige configuração do grafo |
 | `robot` | `python -m neoson_robot.voice_main --device pipewire --activate` | uma captura por início manual |
 | `robot-touch` | `python -m neoson_robot.touch_voice` | rosto contínuo, acorda com "Ei NeoSon" |
@@ -31,7 +30,7 @@ A partir de um checkout, simule com **caminhos absolutos do Linux**:
 ```bash
 python3 infra/install.py --checkout "$HOME/neoson" \
   --environment "$HOME/.config/neoson/server.env" \
-  --services gateway worker telegram graph --dry-run
+  --services gateway worker graph --dry-run
 ```
 
 `--dry-run` funciona também no Windows com caminhos como `/srv/neoson` e
@@ -70,21 +69,20 @@ histórico, fotos ou Git. O arquivo é lido pelo systemd, não por um shell: use
 atribuições `CHAVE=valor`, sem `export`, comandos ou expansão de variáveis.
 
 Para o servidor, use [`.env.example`](../../.env.example) como referência. Gateway,
-worker, bot e grafo devem compartilhar **o mesmo banco**, preferencialmente com
+worker e grafo devem compartilhar **o mesmo banco**, preferencialmente com
 caminhos absolutos para banco/vault/backups. O diretório de trabalho é o checkout.
 Configure token, fornecedor e demais serviços explicitamente. O gateway fica
 em loopback por padrão; não abra portas na internet. Para o Robot, use um arquivo
 separado com `NEOSON_GATEWAY_URL` e `NEOSON_API_TOKEN`, sem chaves de fornecedores.
 
-Antes de iniciar o bot, confirme que não há outro polling com o mesmo token no
-Windows, na Pi ou em outro processo. Antes de reiniciar um servidor existente,
+Antes de reiniciar um servidor existente,
 faça [backup](backup-restauracao.md) e confira as migrações. Instalar unidades
 não migra dados nem decide onde fica o núcleo do sistema.
 
 ```bash
 systemctl --user enable --now neoson-gateway neoson-worker
 # Só após configurar cada componente e conferir instâncias existentes:
-systemctl --user enable --now neoson-telegram neoson-graph
+systemctl --user enable --now neoson-graph
 systemctl --user status neoson-worker --no-pager
 journalctl --user -u neoson-worker -n 30 --no-pager
 ```

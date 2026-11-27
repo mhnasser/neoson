@@ -29,7 +29,7 @@ REQUEST = LLMRequest("balanced", (Message(Role.USER, "oi"),))
     [
         f"chave {SECRET} no texto",
         "Authorization: Bearer abcdefghijklmnop",
-        f"https://api.telegram.org/bot{BOT}/getUpdates",
+        f"https://example.com/bot{BOT}/events",
         "url?token=valor-secreto&x=1",
         "senha=hunter22",
     ],

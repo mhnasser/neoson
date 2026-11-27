@@ -322,5 +322,4 @@ enviados, conversão de áudio, corte de fala e falhas sem texto privado.
 `uv run --no-sync python -m pytest -q tests/test_voice.py` valida o formato/transporte,
 ativação/autenticação, cancelamento/timeout/concorrência, falhas de síntese e isolamento
 de conteúdo em SQLite/outbox/vault com portas fake. O teste não comprova microfone,
-qualidade de STT/TTS, latência da Pi ou fala real. Nenhum reinício de polling do Telegram
-é necessário para usar esse teste.
+qualidade de STT/TTS, latência da Pi ou fala real.

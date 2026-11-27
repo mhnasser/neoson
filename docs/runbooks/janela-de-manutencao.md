@@ -26,7 +26,7 @@ Get-CimInstance Win32_Process |
   Select-Object ProcessId, CommandLine
 ```
 
-Pare o bot do Telegram, o gateway, o worker e o executor do grafo, se estiverem abertos
+Pare o gateway, o worker e o executor do grafo, se estiverem abertos
 (`Stop-Process -Id <id>`). Não pare processos que você não reconhece. Rode o `check` de
 novo: o aviso de `-wal` deve sumir.
 
@@ -86,7 +86,7 @@ uv run --no-sync python -m neoson_worker.main --export-vault
 ```
 
 `health/ready` deve responder `ready`, e o `check` deve mostrar o esquema atual. Mande uma
-mensagem de teste pelo Telegram.
+mensagem de teste pela API autenticada.
 
 ## Se algo der errado
 

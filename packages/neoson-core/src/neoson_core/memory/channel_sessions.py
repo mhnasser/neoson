@@ -1,4 +1,4 @@
-"""Liga uma conversa externa (ex.: chat do Telegram) à sessão atual do NeoSon."""
+"""Liga uma conversa externa à sessão atual do NeoSon."""
 
 import asyncio
 import sqlite3

@@ -20,8 +20,7 @@ NEOSON_DELEGATION_MAX_TOKENS=16000
 NEOSON_DELEGATION_MAX_OUTPUT_TOKENS=1000
 ```
 
-Reinicie o gateway e o bot do Telegram, que leem a configuração na partida. Antes de
-reiniciar, confira o processo ativo para não deixar dois pollings do Telegram. Ligar,
+Reinicie o gateway, que lê a configuração na partida. Ligar,
 desligar ou mudar limites com a delegação ligada altera o hash de runtime. Com isso,
 ações pendentes e vínculos de sessão criados antes da mudança deixam de valer e
 precisam de novo pedido. Com a delegação desligada, os limites não entram no hash.

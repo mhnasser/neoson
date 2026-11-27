@@ -125,8 +125,7 @@ bloqueia a chamada, pois substituir silenciosamente um modelo desconhecido não 
 a sessão. Logs usam códigos, sem prompts, chaves ou conteúdo dos snapshots.
 
 Atualize/reinicie o processo do gateway para carregar esta implementação; o catálogo é
-consultado a cada vínculo e não exige reinício a cada aprovação. Não inicie dois processos
-de polling do Telegram ao mesmo tempo. Nenhuma candidata é aprovada pela instalação.
+consultado a cada vínculo e não exige reinício a cada aprovação. Nenhuma candidata é aprovada pela instalação.
 
 ## Conferir o ciclo no vault
 

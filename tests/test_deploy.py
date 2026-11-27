@@ -45,7 +45,6 @@ def test_dry_run_clones_and_syncs_selected_packages_without_side_effects(
                 "--services",
                 "gateway",
                 "worker",
-                "telegram",
                 "graph",
                 "--repository",
                 "https://example.com/neoson.git",

@@ -39,7 +39,7 @@ hash registrado no manifesto. Saída 0 quando está íntegro; 1 com o motivo, ca
 
 ## Restaurar
 
-1. **Pare o gateway, o worker e o `neoson-telegram`.** A restauração troca o arquivo do banco.
+1. **Pare o gateway e o worker.** A restauração troca o arquivo do banco.
 2. Confira o backup escolhido com `neoson-backup verify <pasta>`.
 3. Restaure:
 

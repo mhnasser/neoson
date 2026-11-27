@@ -17,7 +17,7 @@ A especificação já fixa alguns limites:
 
 - núcleo Python próprio, sem Hermes Agent como dependência (§1.3);
 - nada de microsserviços, Kafka, Redis ou Kubernetes sem necessidade comprovada (§1.2);
-- nenhuma lógica de negócio em handlers HTTP, Telegram ou GPIO, e todo acesso a rede, dados e APIs
+- nenhuma lógica de negócio em handlers HTTP ou GPIO, e todo acesso a rede, dados e APIs
   por adaptadores testáveis (§2);
 - o motor depende só de protocolos, e os testes trocam adaptadores por fakes (§11.1).
 
@@ -42,7 +42,7 @@ Um repositório, organizado como uv workspace com poucos pacotes instaláveis
 |---|---|---|---|---|
 | `neoson-contracts` | biblioteca | servidor e Pi | Schemas de transporte compartilhados: API HTTP v1 e eventos do robô ([ADR-005](ADR-005-API-Contracts.md)) | Pydantic |
 | `neoson-core` | biblioteca | servidor | Motor do NeoSon e seus adaptadores | `neoson-contracts` |
-| `neoson-gateway` | app | servidor | Handlers HTTP (FastAPI) e Telegram: autenticam, normalizam e chamam o motor | `neoson-core`, `neoson-contracts` |
+| `neoson-gateway` | app | servidor | Handlers HTTP (FastAPI): autenticam, normalizam e chamam o motor | `neoson-core`, `neoson-contracts` |
 | `neoson-worker` | app | servidor | Consome a outbox: aprendizagem, memória e Metrics Exporter | `neoson-core`, `neoson-contracts` |
 | `neoson-robot` | app | Pi | Voz, display e dispositivos; fala com o gateway só por HTTP | `neoson-contracts` |
 
@@ -74,7 +74,7 @@ flowchart TB
 2. `neoson-core` não importa nenhum app.
 3. Os apps não importam uns aos outros.
 4. `neoson-robot` não importa `neoson-core`.
-5. `neoson-core` não conhece FastAPI, Telegram nem GPIO; essas bibliotecas ficam nos apps.
+5. `neoson-core` não conhece FastAPI nem GPIO; essas bibliotecas ficam nos apps.
 
 O [ADR-006](ADR-006-Import-Boundaries.md) transforma essas regras em verificação automática.
 

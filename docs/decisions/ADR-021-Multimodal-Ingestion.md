@@ -30,7 +30,7 @@ O desenho completo está no diagrama [D19](../architecture/NeoSon_Diagramas_Merm
 
 ```mermaid
 flowchart TD
-    IN[Arquivo: neoson-docs ingest ou anexo do Telegram]
+    IN[Arquivo: neoson-docs ingest]
     ID[Identificar pelo conteúdo, SHA-256 e limites]
     REG[Registrar original e documento pendente]
     TXT[Texto md e txt: como hoje]
@@ -93,7 +93,7 @@ flowchart TD
   abaixo do limiar ou nenhum texto numa foto). Desligado por padrão. Ligado, exige
   autorização explícita por execução, respeita um teto diário em USD e pede
   aprovação quando um documento precisar de mais páginas que um limite configurável
-  (inicial: 5). Pelo Telegram, a aprovação é a do
+  (inicial: 5). Pela interface autenticada, a aprovação é a do
   ADR-003: ação concreta, hash dos argumentos, uso único. A imagem sai sem
   metadados e reduzida ao necessário. Custo e páginas enviadas ficam registrados.
 
@@ -124,9 +124,8 @@ são ignorados.
 ### 5. Entrada
 
 - `neoson-docs ingest <arquivo>`: local e explícita, a primeira porta.
-- Anexos do Telegram (documento ou foto) de usuários autorizados, com o tamanho
-  conferido antes do download, entram na mesma fila. O Telegram está pausado por
-  decisão do usuário; essa entrada espera a volta dele.
+- Anexos do WhatsApp são uma entrada futura. Transporte e conexão serão definidos
+  separadamente; esta entrega começa pela CLI local.
 
 ### 6. Fila e onde roda
 
@@ -191,7 +190,7 @@ de atualizar a instalação. A implementação se divide em:
    filho, fila, registro de qualidade e migração.
 2. Páginas sem texto e fotos: Pillow e HEIC, remoção de metadados, OCR com confiança
    e o plano B multimodal.
-3. Anexos do Telegram, quando o Telegram voltar.
+3. Anexos de um canal futuro, depois da definição do transporte e da conexão.
 
 A topologia (Pi ou notebook) fica com a decisão da F8. A implementação só começa
 depois de o usuário aprovar este ADR; até lá, o status é `proposed`.

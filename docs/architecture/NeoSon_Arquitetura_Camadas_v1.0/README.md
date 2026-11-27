@@ -5,8 +5,8 @@ execução e onde cada parte roda.
 
 ## 0. Ponto de partida
 
-- **Data:** 2026-11-25.
-- **Código:** `main` em `6d9a410`.
+- **Data:** 2026-11-27.
+- **Código:** atualizado para a retirada do canal de mensagens anterior.
 - **Fontes:** especificação técnica v1.0, seções 3, 3.1 e 4 (diagramas D01 e D02); ADR-001 a
   ADR-019; runbooks em [`docs/runbooks/`](../../runbooks/); [`.env.example`](../../../.env.example)
   para o que vem ligado ou desligado por padrão; inventário da Pi em
@@ -38,7 +38,7 @@ são do Import Linter ([ADR-006](../../decisions/ADR-006-Import-Boundaries.md)).
 caixa não têm setas entre si: a ordem dentro do Agent Loop está na D04.
 
 **Ícones:** todos genéricos, de linha, feitos para este diagrama. Nenhum logo oficial de terceiro
-(OpenAI, Telegram, Raspberry Pi, Obsidian, SQLite, Neo4j, Microsoft) foi usado.
+(OpenAI, Raspberry Pi, Obsidian, SQLite, Neo4j, Microsoft) foi usado.
 
 ## 2. Mapeamento por camada
 
@@ -55,7 +55,7 @@ Caminhos de código relativos a `apps/<app>/src/neoson_<app>/` ou
 | Tela touch · rosto | Rosto animado, gestos e painel de aprovação | robot `face.py`, `touch_voice.py` |
 | LCD do peito | CPU, temperatura, RAM e estado da escuta | robot `chest_display.py`; [display-do-peito](../../runbooks/display-do-peito.md) |
 | Câmera | Imagem ao vivo na tela, aberta por gesto; não envia imagem ao servidor | [rosto-do-robo](../../runbooks/rosto-do-robo.md); [raspberry-pi-os](../../raspberry-pi-os.md) |
-| Telegram (opcional) | Conversa por mensagem | `NEOSON_TELEGRAM_BOT_TOKEN` vazio por padrão; não implantado hoje |
+| WhatsApp (planejado) | Canal futuro de mensagens | Transporte e conexão ainda não definidos |
 | Cliente HTTP | `neoson-robot "texto"` ou qualquer cliente com o token | robot `main.py`; seção "API" do README |
 
 ### Gateway
@@ -65,7 +65,7 @@ Caminhos de código relativos a `apps/<app>/src/neoson_<app>/` ou
 | API v1 · FastAPI | Mensagens, sessões, execuções e consultas, com token Bearer | gateway `app.py`, `queries.py`; [ADR-005](../../decisions/ADR-005-API-Contracts.md) |
 | Voz em stream | Recebe o áudio e devolve eventos NDJSON, com a fala frase a frase | gateway `voice.py`; [voice](../../runbooks/voice.md) |
 | Aprovação de ações | Lista, aprova ou nega ações pendentes e retoma a execução | gateway `actions.py`; [action-approvals](../../runbooks/action-approvals.md) |
-| Canal Telegram (opcional) | Long polling, só para usuários permitidos | gateway `telegram.py`, `telegram_main.py` |
+| Canal futuro (planejado) | Integração WhatsApp a especificar | Sem implementação |
 
 ### Motor
 
@@ -162,9 +162,9 @@ Rodapé da caixa: a outbox com lease, retry e dead letter (`infrastructure/outbo
 
 | Seta | Nível | Troca em execução | Origem |
 |---|---|---|---|
-| Canais ↔ Gateway | camada ↔ camada | O Robot e o cliente HTTP enviam mensagens, voz e aprovações e recebem as respostas; o canal Telegram busca mensagens e envia respostas | robot `client.py`, `voice_client.py`; gateway `app.py`, `telegram.py` |
+| Canais ↔ Gateway | camada ↔ camada | O Robot e o cliente HTTP enviam mensagens, voz e aprovações e recebem as respostas | robot `client.py`, `voice_client.py`; gateway `app.py` |
 | Gateway ↔ Motor | camada ↔ camada | O gateway entrega a mensagem ou o áudio e recebe a resposta | gateway `composition.py` (`build_engine`, `build_voice`) |
-| Gateway ↔ SQLite | camada ↔ componente | Consultas da API, ações pendentes, sessões do Telegram, recibos de voz | gateway `queries.py`, `voice_replay.py`, `telegram_main.py`; `infrastructure/actions.py` |
+| Gateway ↔ SQLite | camada ↔ componente | Consultas da API, ações pendentes, recibos de voz | gateway `queries.py`, `voice_replay.py`; `infrastructure/actions.py` |
 | Motor ↔ SQLite | camada ↔ componente | Lê histórico, memória, skills e políticas; grava mensagens, execuções e eventos da outbox | `memory/session_store.py`, `memory/curated.py`, `skills/registry.py`, `infrastructure/outbox.py` |
 | SQLite ↔ Worker | componente ↔ camada | O worker pega eventos da outbox por lease e grava efeitos, uso e dead letter | worker `worker.py`, `infrastructure/outbox.py` |
 | Painéis do vault → Vault | componente → componente | Escreve os painéis | `telemetry/vault.py`, `memory/vault_export.py` |
@@ -181,7 +181,7 @@ Rodapé da caixa: a outbox com lease, retry e dead letter (`infrastructure/outbo
 
 **Segue a especificação:** Gateway, Router, Agent Loop, Tool Registry com Policy Engine, Skills,
 SQLite com outbox, worker assíncrono, vault do Obsidian com painéis (Metrics Exporter), curadoria de
-skills (Learning Workers), Robot na Raspberry Pi e Telegram como canal.
+skills (Learning Workers), Robot na Raspberry Pi e cliente HTTP.
 
 **Diverge, e por quê:**
 
@@ -211,6 +211,6 @@ skills (Learning Workers), Robot na Raspberry Pi e Telegram como canal.
   rodar nele.
 - **outlook-mcp.** Decidido; faltam o ADR (inclusive o conflito entre o escopo `Mail.Send` do
   servidor e o [ADR-012](../../decisions/ADR-012-Personal-Writes.md)) e o cliente MCP.
-- **Telegram.** Pausado por decisão do mantenedor; o código continua disponível.
+- **WhatsApp.** Planejado para substituir o canal anterior; transporte e conexão ficam para uma entrega futura.
 - **Logos oficiais.** O desenho usa ícones genéricos; para trocar, os arquivos oficiais precisam
   ser fornecidos.

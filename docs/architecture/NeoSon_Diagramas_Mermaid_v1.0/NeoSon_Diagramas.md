@@ -33,7 +33,6 @@ Fonte: [D01.mmd](D01.mmd)
 ```mermaid
 flowchart TB
     PI[NeoSon Robot - Raspberry Pi]
-    TG[Telegram]
     WEB[Web e CLI]
     GW[NeoSon Gateway]
     ROUTER[NeoSon Router]
@@ -52,7 +51,6 @@ flowchart TB
     EXT[APIs externas e MCP]
     MODELS[Provedores de LLM]
     PI --> GW
-    TG --> GW
     WEB --> GW
     GW --> ROUTER
     ROUTER --> CTX
@@ -102,7 +100,7 @@ flowchart TB
     end
     subgraph INTERNET[Servicos externos]
       PROVIDERS[APIs LLM, STT e TTS opcionais]
-      SERVICES[Telegram, Outlook, Google e Web]
+      SERVICES[Outlook, Google e Web]
     end
     CLIENT <--> GATE
     ENGINE <--> PROVIDERS
@@ -516,7 +514,7 @@ Fonte: [D18.mmd](D18.mmd)
 
 ```mermaid
 flowchart LR
-    CLI[CLI ou Telegram]
+    CLI[CLI]
     GW[Gateway]
     ROUTE[Router por regras]
     LOOP[NeoSon Core]
@@ -541,7 +539,7 @@ Fonte: [D19.mmd](D19.mmd). Proposta do [ADR-021](../../decisions/ADR-021-Multimo
 
 ```mermaid
 flowchart TD
-    IN[Arquivo: neoson-docs ingest ou anexo do Telegram]
+    IN[Arquivo: neoson-docs ingest]
     ID[Identificar pelo conteúdo, SHA-256 e limites]
     REG[Registrar original e documento pendente]
     TXT[Texto md e txt: como hoje]

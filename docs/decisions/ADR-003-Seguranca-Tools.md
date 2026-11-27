@@ -74,8 +74,7 @@ A implantação pessoal usa um único proprietário HTTP: todos os portadores do
 pertencem à mesma identidade. O cliente não escolhe o proprietário por JSON/header/query.
 Rotação do token não muda esse proprietário. Isso não é autenticação multiusuário; separar
 usuários exige uma nova composição de identidade e isolamento de sessões. Canais sem
-identidade confiável não criam concessões retomáveis. A interface de consentimento do
-Telegram fica separada desta API; nenhum texto do modelo ou mensagem “sim” concede permissão.
+identidade confiável não criam concessões retomáveis. A interface de consentimento de cada canal fica separada desta API; nenhum texto do modelo ou mensagem “sim” concede permissão.
 
 A decisão humana e a retomada são operações separadas. Antes de executar, o serviço
 confere expiração, contexto atual, schema/risco, disponibilidade da ferramenta e a versão,

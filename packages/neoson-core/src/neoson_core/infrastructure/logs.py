@@ -18,7 +18,7 @@ MASK = "[redigido]"
 _SECRETS = (
     re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}"),
-    # Token de bot do Telegram, inclusive colado em ".../bot<token>/" na URL da API.
+    # Tokens legados, inclusive quando aparecem no caminho de uma URL.
     re.compile(r"(?<![0-9])\d{6,12}:[A-Za-z0-9_-]{30,}"),
     re.compile(r"(?i)(password|senha|api[_-]?key|token)=[^\s&]+"),
 )

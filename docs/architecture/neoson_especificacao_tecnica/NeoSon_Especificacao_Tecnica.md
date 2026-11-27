@@ -18,7 +18,7 @@ owner: "Projeto pessoal"
 
 ## 1. Resumo executivo
 
-O NeoSon é um **assistente pessoal de IA com interface física**, acessível por voz na Raspberry Pi 5, Telegram, interface web e terminal. O núcleo de execução roda preferencialmente em um notebook servidor; a Raspberry atua como cliente de interação. O sistema acessa ferramentas autorizadas (agenda, e-mail, pesquisa, arquivos, MCP), mantém histórico e conhecimento persistente, utiliza skills reutilizáveis e acumula dados de qualidade e custo para evolução contínua.
+O NeoSon é um **assistente pessoal de IA com interface física**, acessível por voz na Raspberry Pi 5, interface web e terminal. O núcleo de execução roda preferencialmente em um notebook servidor; a Raspberry atua como cliente de interação. O sistema acessa ferramentas autorizadas (agenda, e-mail, pesquisa, arquivos, MCP), mantém histórico e conhecimento persistente, utiliza skills reutilizáveis e acumula dados de qualidade e custo para evolução contínua.
 
 O desenho possui **dois ciclos desacoplados**:
 
@@ -58,7 +58,7 @@ O **Obsidian é a interface de conhecimento e dashboards analíticos**, alimenta
 | Memória | SQLite, Obsidian e evolução para Neo4j | Diretriz definida; detalhes propostos |
 | Skills | `SKILL.md`, catálogo, versionamento, testes e curadoria | Definido conceitualmente |
 | Roteador | Contrato próprio; regras primeiro e Laya opcional em laboratório | Proposto |
-| Gateway | FastAPI e clientes Telegram/voz/web | Proposto |
+| Gateway | FastAPI e clientes voz/web | Proposto |
 | Fila | SQLite transactional outbox e workers Python | Proposto para MVP |
 | Dashboards | Obsidian com Bases/Dataview/gráficos e exportador Markdown | Diretriz definida; plugins a validar |
 | Aprovações | Escrita sensível e publicação de skills controladas | Requisito de segurança |
@@ -69,7 +69,7 @@ O **Obsidian é a interface de conhecimento e dashboards analíticos**, alimenta
 
 **Regras de implementação:**
 
-- Sem lógica de negócio em handlers HTTP, Telegram ou GPIO.
+- Sem lógica de negócio em handlers HTTP ou GPIO.
 - Todo acesso a rede, dados e APIs passa por adaptadores testáveis.
 - LLM propõe ações; **Policy Engine valida** antes de executar.
 - Uma execução tem `run_id`, `session_id`, limites e orçamento.
@@ -82,7 +82,7 @@ O **Obsidian é a interface de conhecimento e dashboards analíticos**, alimenta
 
 | ID | Descrição | Prioridade |
 |---|---|---|
-| RF-01 | Receber mensagens via Telegram e CLI, depois voz na Raspberry | P0/P1 |
+| RF-01 | Receber mensagens via CLI, depois voz na Raspberry | P0/P1 |
 | RF-02 | Criar sessão, autenticar remetente e persistir mensagens | P0 |
 | RF-03 | Executar Agent Loop com chamadas de ferramentas e limite de passos | P0 |
 | RF-04 | Selecionar provedor/modelo por uma política desacoplada | P0 |
@@ -117,7 +117,6 @@ O **Obsidian é a interface de conhecimento e dashboards analíticos**, alimenta
 ```mermaid
 flowchart TB
     PI[NeoSon Robot - Raspberry Pi]
-    TG[Telegram]
     WEB[Web e CLI]
     GW[NeoSon Gateway]
     ROUTER[NeoSon Router]
@@ -136,7 +135,6 @@ flowchart TB
     EXT[APIs externas e MCP]
     MODELS[Provedores de LLM]
     PI --> GW
-    TG --> GW
     WEB --> GW
     GW --> ROUTER
     ROUTER --> CTX
@@ -202,7 +200,7 @@ flowchart TB
     end
     subgraph INTERNET[Servicos externos]
       PROVIDERS[APIs LLM, STT e TTS opcionais]
-      SERVICES[Telegram, Outlook, Google e Web]
+      SERVICES[Outlook, Google e Web]
     end
     CLIENT <--> GATE
     ENGINE <--> PROVIDERS
@@ -677,7 +675,7 @@ Endpoints HTTP sugeridos, autenticados e versionados:
 | `GET /api/v1/health/ready` | Dependências mínimas disponíveis |
 | `GET /api/v1/metrics/summary` | Agregados autorizados para UI/exportador |
 
-Para chat em tempo real, WebSocket/SSE é uma evolução, não condição do MVP. O cliente Raspberry deve reconectar com backoff; envio de comandos precisa de autenticação e proteção contra reprodução. Telegram associa o identificador do remetente a uma lista de permissões, não apenas ao nome visível.
+Para chat em tempo real, WebSocket/SSE é uma evolução, não condição do MVP. O cliente Raspberry deve reconectar com backoff; envio de comandos precisa de autenticação e proteção contra reprodução. Canais futuros devem associar a identidade autenticada do remetente a uma lista de permissões.
 
 ### 12.1 Voz e estados do NeoSon Robot
 
@@ -903,7 +901,7 @@ flowchart LR
 1. **Unitários:** roteador, orçamento, Context Builder, parsing de tools, policy e estados do loop (LLM fake).
 2. **Contrato:** adapters de LLM, ferramentas, banco e exportador; schemas de eventos versionados.
 3. **Integração:** SQLite + worker; interrupção/reinício; calendar sandbox; skills com fixtures.
-4. **E2E:** Telegram → Gateway → resposta; Pi simulada → gateway; documento → vault; aprovação → tool.
+4. **E2E:** CLI → Gateway → resposta; Pi simulada → gateway; documento → vault; aprovação → tool.
 5. **Avaliação de IA:** qualidade do resultado, custo, seleção de modelos, skills com versões e testes de prompt injection.
 
 ### 16.2 Critérios de pronto por feature
@@ -997,7 +995,7 @@ NEOSON_METRICS_EXPORT_ENABLED=true
 | Fase | Entregas mínimas | Critério de aceite |
 |---|---|---|
 | **F0 — Fundação** | repositório, `pyproject`, CI, tipagem, documentação, configs e ADRs | `pytest`, `ruff` e `mypy` no CI |
-| **F1 — Core MVP** | Gateway CLI/Telegram, SQLite, LLM Adapter, loop, registry, policy e outbox | conversa, tool fake e reinício sem perda de evento |
+| **F1 — Core MVP** | Gateway CLI, SQLite, LLM Adapter, loop, registry, policy e outbox | conversa, tool fake e reinício sem perda de evento |
 | **F2 — Memória e Obsidian** | busca FTS5, memória curada, vault, métricas Markdown | recuperar decisão anterior com fonte; dashboard diário |
 | **F3 — Skills** | loader, catálogo, metadados, fixtures e versões | executar skill aprovada e medir resultado |
 | **F4 — Learning Engine** | workers, propostas, testes, aprovação e rollback | propor v1.1 sem publicar código automaticamente |
@@ -1011,7 +1009,7 @@ NEOSON_METRICS_EXPORT_ENABLED=true
 
 ```mermaid
 flowchart LR
-    CLI[CLI ou Telegram]
+    CLI[CLI]
     GW[Gateway]
     ROUTE[Router por regras]
     LOOP[NeoSon Core]
@@ -1042,7 +1040,7 @@ flowchart LR
 | T-004 | Implementar Agent Loop com limite de passos | T-003 |
 | T-005 | SQLite migrations para sessão/run/outbox | T-002 |
 | T-006 | Tool Registry, tool fake e Policy Engine | T-004 |
-| T-007 | Gateway CLI e Telegram com autenticação | T-004, T-005 |
+| T-007 | Gateway CLI com autenticação | T-004, T-005 |
 | T-008 | Worker outbox com lease, retry e idempotência | T-005 |
 | T-009 | Metrics Exporter Markdown e dashboard Home | T-008 |
 | T-010 | Recuperação de histórico FTS5 e resumo | T-005 |
@@ -1070,7 +1068,7 @@ flowchart LR
 
 O primeiro MVP está concluído quando:
 
-1. Uma mensagem enviada no CLI ou Telegram inicia uma execução identificável.
+1. Uma mensagem enviada no CLI inicia uma execução identificável.
 2. O roteador escolhe uma política, sem acoplar o motor à Laya.
 3. A LLM pode responder ou solicitar uma ferramenta validada pela Policy Engine.
 4. A sessão, a resposta e um evento de conclusão sobrevivem a reinício do processo.

@@ -2,7 +2,7 @@
 
 ## Logs
 
-Gateway, bot do Telegram e worker usam a mesma configuração de logs.
+Gateway e worker usam a mesma configuração de logs.
 
 ```dotenv
 NEOSON_LOG_LEVEL=INFO
@@ -15,7 +15,7 @@ NEOSON_LOG_BACKUPS=5
 ```
 
 No formato `json`, cada linha traz `time` (UTC), `level`, `logger`, `process`
-(`gateway`, `telegram` ou `worker`), `message` e, quando houver, `run_id`, `error` (tipo
+(`gateway` ou `worker`), `message` e, quando houver, `run_id`, `error` (tipo
 da exceção) e `traceback`. Exemplo para filtrar uma execução:
 
 ```bash

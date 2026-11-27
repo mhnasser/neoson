@@ -162,9 +162,6 @@ class ServerSettings(BaseSettings):
         default=None, ge=0, allow_inf_nan=False
     )
 
-    telegram_bot_token: SecretStr | None = None
-    telegram_allowed_users: Annotated[list[int], NoDecode] = Field(default_factory=list)
-
     worker_poll_seconds: PositiveFloat = 1.0
     worker_lease_seconds: PositiveFloat = 60.0
     worker_max_attempts: PositiveInt = 5
@@ -198,13 +195,6 @@ class ServerSettings(BaseSettings):
             ):
                 raise ValueError("domínio inválido")
         return [d.rstrip(".") for d in value]
-
-    @field_validator("telegram_allowed_users", mode="before")
-    @classmethod
-    def _comma_separated_ids(cls, value: object) -> object:
-        if isinstance(value, str):
-            return [item.strip() for item in value.split(",") if item.strip()]
-        return value
 
     @field_validator("timezone")
     @classmethod
