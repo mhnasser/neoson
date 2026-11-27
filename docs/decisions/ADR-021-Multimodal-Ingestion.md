@@ -1,7 +1,9 @@
 # ADR-021 — Ingestão de PDFs e imagens com extração local primeiro
 
-- **Status:** proposed
+- **Status:** accepted
 - **Data:** 2026-11-25
+- **Aprovação:** 2026-11-27, extração de texto de PDFs e OCR local. O plano B
+  multimodal permanece desligado por padrão; a entrada inicial é a CLI local.
 - **Referências:** [ADR-019](ADR-019-Document-Ingestion.md),
   [ADR-003](ADR-003-Seguranca-Tools.md), [ADR-015](ADR-015-Graph-Extraction.md),
   [ADR-010](ADR-010-Voice.md); especificação §9.3 (D11) e §14; diagrama
@@ -192,5 +194,5 @@ de atualizar a instalação. A implementação se divide em:
    e o plano B multimodal.
 3. Anexos de um canal futuro, depois da definição do transporte e da conexão.
 
-A topologia (Pi ou notebook) fica com a decisão da F8. A implementação só começa
-depois de o usuário aprovar este ADR; até lá, o status é `proposed`.
+A topologia (Pi ou notebook) fica com a decisão da F8. A implementação de texto/PDF
+e OCR está aprovada; integração de mensagens depende da definição futura do canal.
