@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-documents = ["pypdf>=7.2,<8"]
+documents = ["pypdf>=7.2,<8", "Pillow>=13,<14", "pillow-heif>=1.9,<2"]
 # Adaptador opcional do grafo; a instalação padrão e a Pi não instalam o driver.
 neo4j = ["neo4j>=6.4,<7"]
 

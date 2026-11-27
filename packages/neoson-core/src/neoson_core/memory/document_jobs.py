@@ -4,6 +4,7 @@ import base64
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import signal
 import subprocess
@@ -31,19 +32,40 @@ from neoson_core.memory.documents import (
 from neoson_core.telemetry.vault import write_atomic
 
 
-def register_pdf(store: DocumentStore, path: Path, *, extract: bool) -> IngestResult:
-    if importlib.util.find_spec("pypdf") is None:
-        raise DocumentRejected("PDF requer o extra opcional documents.")
+def register_binary(store: DocumentStore, path: Path, *, extract: bool) -> IngestResult:
+    extension = path.suffix.lower().lstrip(".")
+    is_pdf = extension == "pdf"
+    if importlib.util.find_spec("pypdf" if is_pdf else "PIL") is None:
+        raise DocumentRejected("Este formato requer o extra opcional documents.")
+    limit = store.limits.pdf_max_bytes if is_pdf else store.limits.image_max_bytes
     try:
         with path.open("rb") as source:
-            data = source.read(store.limits.pdf_max_bytes + 1)
+            data = source.read(limit + 1)
     except OSError:
         raise DocumentRejected("Não foi possível ler o arquivo.") from None
-    if len(data) > store.limits.pdf_max_bytes:
+    if len(data) > limit:
         raise DocumentRejected("Arquivo acima do limite de tamanho.")
-    if not data.startswith(b"%PDF-"):
-        raise DocumentRejected("Tipo ou assinatura do PDF inválidos.")
+    valid = (
+        data.startswith(b"%PDF-")
+        if is_pdf
+        else (
+            (extension in {"jpg", "jpeg"} and data.startswith(b"\xff\xd8\xff"))
+            or (extension == "png" and data.startswith(b"\x89PNG\r\n\x1a\n"))
+            or (extension == "heic" and data[4:8] == b"ftyp")
+        )
+    )
+    if not valid:
+        raise DocumentRejected("Tipo ou assinatura do arquivo inválidos.")
     document_id = hashlib.sha256(data).hexdigest()
+    if not is_pdf:
+        result = _run_parser(data, store.limits, kind="image", operation="prepare")
+        try:
+            data = base64.b64decode(result["image"], validate=True)
+        except (ValueError, TypeError, KeyError):
+            raise DocumentRejected("invalid_output") from None
+        if not data.startswith(b"\x89PNG\r\n\x1a\n") or len(data) > limit:
+            raise DocumentRejected("image_limit")
+        extension = "png"
     title = _safe_name(path.stem)
     note = NOTES_DIR / f"{slug(title)}-{document_id[:8]}.md"
     now = store._clock().astimezone(UTC).isoformat()
@@ -66,18 +88,21 @@ def register_pdf(store: DocumentStore, path: Path, *, extract: bool) -> IngestRe
                 store._vault / old["note_path"],
                 old["extraction_state"],
             )
-        _write_private(store._store / f"{document_id}.pdf", data)
+        _write_private(store._store / f"{document_id}.{extension}", data)
         c.execute(
             "INSERT INTO documents (id, original_name, extension, size_bytes, "
-            "chars, title, note_path, ingested_at, extraction_state) VALUES "
-            "(?,?,'pdf',?,0,?,?,?,'pending')",
+            "chars, title, note_path, ingested_at, extraction_state, stored_sha256) "
+            "VALUES "
+            "(?,?,?,?,0,?,?,?,'pending',?)",
             (
                 document_id,
                 _safe_name(path.name),
+                extension,
                 len(data),
                 title,
                 note.as_posix(),
                 now,
+                hashlib.sha256(data).hexdigest(),
             ),
         )
         c.execute(
@@ -88,7 +113,13 @@ def register_pdf(store: DocumentStore, path: Path, *, extract: bool) -> IngestRe
     return IngestResult(document_id, title, 0, True, store._vault / note, "pending")
 
 
-def parse(data: bytes, limits: DocumentLimits) -> list[dict[str, Any]]:
+def _run_parser(
+    data: bytes,
+    limits: DocumentLimits,
+    *,
+    kind: str = "pdf",
+    operation: str = "extract",
+) -> dict[str, Any]:
     environment = {
         key: value
         for key, value in os.environ.items()
@@ -96,7 +127,12 @@ def parse(data: bytes, limits: DocumentLimits) -> list[dict[str, Any]]:
     }
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     request = json.dumps(
-        {"data": base64.b64encode(data).decode("ascii"), "limits": asdict(limits)}
+        {
+            "data": base64.b64encode(data).decode("ascii"),
+            "limits": asdict(limits),
+            "kind": kind,
+            "operation": operation,
+        }
     ).encode()
     with tempfile.TemporaryDirectory(prefix="neoson-parser-") as scratch:
         process = subprocess.Popen(
@@ -119,12 +155,31 @@ def parse(data: bytes, limits: DocumentLimits) -> list[dict[str, Any]]:
                 process.kill()
             process.communicate()
             raise DocumentRejected("timeout") from None
-    if process.returncode or len(output) > limits.max_chars * 12 + 100_000:
+    maximum = (
+        limits.image_max_bytes * 2 + 100_000
+        if operation == "prepare"
+        else limits.max_chars * 12 + 100_000
+    )
+    if process.returncode or len(output) > maximum:
         raise DocumentRejected("parser_failure")
     try:
         result = json.loads(output)
         if result.get("error"):
             raise DocumentRejected(result["error"])
+        if not isinstance(result, dict):
+            raise ValueError
+        return result
+    except DocumentRejected:
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise DocumentRejected("invalid_output") from None
+
+
+def parse(
+    data: bytes, limits: DocumentLimits, *, kind: str = "pdf"
+) -> list[dict[str, Any]]:
+    result = _run_parser(data, limits, kind=kind)
+    try:
         pages = result["pages"]
         if not isinstance(pages, list) or not 1 <= len(pages) <= limits.max_pages:
             raise ValueError
@@ -132,11 +187,18 @@ def parse(data: bytes, limits: DocumentLimits) -> list[dict[str, Any]]:
         for number, page in enumerate(pages, 1):
             if (
                 page["page"] != number
-                or page["route"] not in {"text", "empty"}
+                or page["route"] not in {"text", "empty", "ocr"}
                 or not isinstance(page["text"], str)
             ):
                 raise ValueError
             page["text"] = normalize(page["text"])
+            confidence = page.get("confidence")
+            if confidence is not None and (
+                not isinstance(confidence, (int, float))
+                or not math.isfinite(confidence)
+                or not 0 <= confidence <= 100
+            ):
+                raise ValueError
             chars += len(page["text"])
         if chars > limits.max_chars:
             raise ValueError
@@ -150,6 +212,22 @@ def parse(data: bytes, limits: DocumentLimits) -> list[dict[str, Any]]:
 class DocumentExtractor:
     def __init__(self, store: DocumentStore) -> None:
         self.store = store
+
+    def retry(self, document_id: str) -> bool:
+        with self.store._connection() as c, transaction(c):
+            changed = c.execute(
+                "UPDATE document_extraction_jobs SET status='pending', attempts=0, "
+                "lease_id=NULL, lease_until=NULL, retry_at=NULL, last_error=NULL "
+                "WHERE document_id=? AND status='failed' AND EXISTS "
+                "(SELECT 1 FROM documents WHERE id=? AND status='active')",
+                (document_id, document_id),
+            ).rowcount
+            if changed:
+                c.execute(
+                    "UPDATE documents SET extraction_state='pending' WHERE id=?",
+                    (document_id,),
+                )
+        return bool(changed)
 
     def process_once(self) -> bool:
         store = self.store
@@ -174,7 +252,8 @@ class DocumentExtractor:
                 return False
             job = c.execute(
                 "SELECT j.*, d.extension, d.size_bytes, d.title, d.note_path, "
-                "d.original_name, d.ingested_at FROM document_extraction_jobs j "
+                "d.original_name, d.ingested_at, d.stored_sha256 "
+                "FROM document_extraction_jobs j "
                 "JOIN documents d ON d.id=j.document_id WHERE d.status='active' AND"
                 " ((j.status='pending' AND (j.retry_at IS NULL OR j.retry_at <= ?))"
                 " OR (j.status='leased' AND j.lease_until <= ?)) ORDER BY "
@@ -202,13 +281,18 @@ class DocumentExtractor:
             with (store._store / f"{document_id}.{job['extension']}").open(
                 "rb"
             ) as source:
-                data = source.read(store.limits.pdf_max_bytes + 1)
-            if (
-                len(data) != job["size_bytes"]
-                or hashlib.sha256(data).hexdigest() != document_id
+                data = source.read(
+                    max(store.limits.pdf_max_bytes, store.limits.image_max_bytes) + 1
+                )
+            if len(data) != job["size_bytes"] or hashlib.sha256(data).hexdigest() != (
+                job["stored_sha256"] or document_id
             ):
                 raise DocumentRejected("source_changed")
-            pages = parse(data, store.limits)
+            pages = (
+                parse(data, store.limits)
+                if job["extension"] == "pdf"
+                else parse(data, store.limits, kind="image")
+            )
         except DocumentRejected as rejected:
             error = (
                 str(rejected)
@@ -223,6 +307,12 @@ class DocumentExtractor:
                     "invalid_output",
                     "parser_failure",
                     "source_changed",
+                    "ocr_dependency",
+                    "ocr_failure",
+                    "pixels",
+                    "image_limit",
+                    "image_type",
+                    "image_frames",
                 }
                 else "parser_failure"
             )
@@ -261,7 +351,20 @@ class DocumentExtractor:
                 "text_pages": sum(p["route"] == "text" for p in pages),
                 "empty_pages": sum(p["route"] == "empty" for p in pages),
                 "short_pages": sum(0 < len(p["text"]) < 20 for p in pages),
+                "ocr_pages": sum(p["route"] == "ocr" for p in pages),
+                "low_confidence_pages": sum(
+                    p.get("confidence") is not None
+                    and p["confidence"] < store.limits.ocr_min_confidence
+                    for p in pages
+                ),
+                "unrendered_pages": sum(
+                    p.get("warning") == "no_embedded_image" for p in pages
+                ),
             }
+            scores = [p["confidence"] for p in pages if p.get("confidence") is not None]
+            if scores:
+                quality["ocr_confidence_mean"] = sum(scores) / len(scores)
+                quality["ocr_confidence_min"] = min(scores)
             chunks = [
                 (p["page"], chunk)
                 for p in pages
@@ -282,15 +385,25 @@ class DocumentExtractor:
             write_atomic(store._vault / job["note_path"], note)
             c.executemany(
                 "INSERT INTO document_pages (document_id, page, route, chars, "
-                "needs_ocr) "
-                "VALUES (?,?,?,?,?)",
+                "needs_ocr, confidence, warning_code) "
+                "VALUES (?,?,?,?,?,?,?)",
                 [
                     (
                         document_id,
                         p["page"],
                         p["route"],
                         len(p["text"]),
-                        int(len(p["text"]) < 20),
+                        int(
+                            len(p["text"]) < 20
+                            or (
+                                p.get("confidence") is not None
+                                and p["confidence"] < store.limits.ocr_min_confidence
+                            )
+                        ),
+                        p.get("confidence"),
+                        "no_embedded_image"
+                        if p.get("warning") == "no_embedded_image"
+                        else None,
                     )
                     for p in pages
                 ],

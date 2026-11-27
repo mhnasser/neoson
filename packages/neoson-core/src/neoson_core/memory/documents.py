@@ -40,10 +40,26 @@ class DocumentLimits:
     pdf_max_bytes: int = 20_000_000
     max_pages: int = 200
     extract_timeout_seconds: float = 60
+    image_max_bytes: int = 15_000_000
+    max_pixels: int = 40_000_000
+    ocr_timeout_seconds: float = 10
+    ocr_min_confidence: float = 60
+    tesseract_command: tuple[str, ...] = ("tesseract",)
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.extract_timeout_seconds):
             raise ValueError("Prazo de extração precisa ser finito.")
+        if (
+            not 1 <= self.ocr_timeout_seconds <= 300
+            or not 0 <= self.ocr_min_confidence <= 100
+        ):
+            raise ValueError("Limites de OCR inválidos.")
+        if (
+            not self.tesseract_command
+            or len(self.tesseract_command) > 8
+            or not all(self.tesseract_command)
+        ):
+            raise ValueError("Comando de OCR inválido.")
         if (
             min(
                 self.max_bytes,
@@ -52,6 +68,8 @@ class DocumentLimits:
                 self.pdf_max_bytes,
                 self.max_pages,
                 self.extract_timeout_seconds,
+                self.image_max_bytes,
+                self.max_pixels,
             )
             < 1
         ):
@@ -158,10 +176,10 @@ class DocumentStore:
             migrate(c)
 
     def ingest(self, path: Path, *, extract: bool) -> IngestResult:
-        if path.suffix.lower() == ".pdf":
-            from neoson_core.memory.document_jobs import register_pdf
+        if path.suffix.lower() in {".pdf", ".jpg", ".jpeg", ".png", ".heic"}:
+            from neoson_core.memory.document_jobs import register_binary
 
-            return register_pdf(self, path, extract=extract)
+            return register_binary(self, path, extract=extract)
         extension = EXTENSIONS.get(path.suffix.lower())
         if extension is None:
             raise DocumentRejected("Use um arquivo .md, .markdown ou .txt.")

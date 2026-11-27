@@ -226,7 +226,7 @@ def test_migration_preserves_old_documents_chunks_graph_and_fts(
     before = env.rows("SELECT rowid, document_id, n, text FROM document_chunks")
     monkeypatch.setattr(db, "migrations", lambda: all_migrations)
     with closing(db.connect(env.db)) as c:
-        assert db.migrate(c) == [22]
+        assert db.migrate(c) == [m.version for m in all_migrations[21:]]
         assert not c.execute("PRAGMA foreign_key_check").fetchall()
         assert c.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert env.rows("SELECT rowid, document_id, n, text FROM document_chunks") == before
@@ -240,8 +240,8 @@ def test_failed_rebuild_rolls_back_and_restores_foreign_keys(
     env = Env(tmp_path)
     original = db.migrations()
     broken = db.Migration(
-        23,
-        "0023_invalid.sql",
+        len(original) + 1,
+        "9999_invalid.sql",
         "-- foreign_keys: off\n"
         "INSERT INTO document_chunks(document_id,n,text) VALUES ('missing',0,'bad');",
     )
@@ -251,7 +251,7 @@ def test_failed_rebuild_rolls_back_and_restores_foreign_keys(
             db.migrate(c)
         assert c.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert not c.execute("SELECT * FROM document_chunks").fetchall()
-        assert db.schema_version(c) == 22
+        assert db.schema_version(c) == len(original)
 
 
 def test_parser_deadline_terminates_its_process(monkeypatch: Any) -> None:

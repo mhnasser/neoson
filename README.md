@@ -168,9 +168,9 @@ Documentação interativa (OpenAPI) em `/docs`.
 
 ### Documentos
 
-`neoson-docs` ingere texto e enfileira PDFs com o extra opcional `documents`:
+`neoson-docs` ingere texto e enfileira PDFs e fotos com o extra opcional `documents`:
 preserva o original pelo hash, extrai em processo separado e cria uma nota inerte
-com qualidade e página de origem. Com o grafo ligado, propõe fatos para revisão. Veja
+com qualidade e página de origem. Fotos têm localização removida e OCR local. Com o grafo ligado, propõe fatos para revisão. Veja
 [`docs/runbooks/documentos.md`](docs/runbooks/documentos.md).
 
 ### Logs e resiliência

@@ -77,6 +77,13 @@ class ServerSettings(BaseSettings):
     document_pdf_max_bytes: int = Field(default=20_000_000, ge=1024, le=20_000_000)
     document_max_pages: int = Field(default=200, ge=1, le=200)
     document_extract_timeout_seconds: float = Field(default=60, ge=1, le=300)
+    document_image_max_bytes: int = Field(default=15_000_000, ge=1024, le=15_000_000)
+    document_max_pixels: int = Field(default=40_000_000, ge=1, le=40_000_000)
+    document_ocr_timeout_seconds: float = Field(default=10, ge=1, le=300)
+    document_ocr_min_confidence: float = Field(default=60, ge=0, le=100)
+    document_tesseract_command: list[
+        Annotated[str, Field(min_length=1, max_length=1000)]
+    ] = Field(default_factory=lambda: ["tesseract"], min_length=1, max_length=8)
 
     primary_model_profile: str = "balanced"
     router_policy: str = "rules-v1"

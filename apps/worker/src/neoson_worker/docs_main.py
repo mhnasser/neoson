@@ -23,6 +23,11 @@ def store_for(settings: ServerSettings) -> DocumentStore:
             pdf_max_bytes=settings.document_pdf_max_bytes,
             max_pages=settings.document_max_pages,
             extract_timeout_seconds=settings.document_extract_timeout_seconds,
+            image_max_bytes=settings.document_image_max_bytes,
+            max_pixels=settings.document_max_pixels,
+            ocr_timeout_seconds=settings.document_ocr_timeout_seconds,
+            ocr_min_confidence=settings.document_ocr_min_confidence,
+            tesseract_command=tuple(settings.document_tesseract_command),
         ),
     )
 
@@ -30,11 +35,13 @@ def store_for(settings: ServerSettings) -> DocumentStore:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="neoson-docs")
     commands = parser.add_subparsers(dest="command", required=True)
-    ingest = commands.add_parser("ingest", help="ingere texto ou enfileira um PDF")
+    ingest = commands.add_parser("ingest", help="ingere texto, PDF ou foto")
     ingest.add_argument("path", type=Path)
     commands.add_parser("list", help="lista os documentos ingeridos")
     forget = commands.add_parser("forget", help="esquece um documento pelo ID")
     forget.add_argument("id")
+    retry = commands.add_parser("retry", help="reagenda uma extração que falhou")
+    retry.add_argument("id")
     process = commands.add_parser("process", help="processa a fila de extração local")
     process.add_argument(
         "--once", action="store_true", help="processa no máximo um documento"
@@ -45,6 +52,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         store = store_for(settings)
     except ConfigError as error:
         raise SystemExit(str(error)) from None
+    if args.command == "retry":
+        if not DocumentExtractor(store).retry(args.id):
+            print("Documento não está ativo com extração falha.")
+            return 1
+        print(f"{args.id} | extração reagendada")
+        return 0
     if args.command == "process":
         extractor = DocumentExtractor(store)
         try:
