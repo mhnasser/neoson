@@ -88,6 +88,9 @@ por I2C; veja o [runbook do display do peito](docs/runbooks/display-do-peito.md)
 o `neoson-face` mostra o rosto animado do robô em tela cheia; veja o
 [runbook do rosto](docs/runbooks/rosto-do-robo.md).
 
+O WhatsApp está [planejado para uso local na Raspberry](docs/runbooks/mensagens.md),
+por navegador ou aplicativo; a integração fica para uma entrega futura.
+
 O gateway exige `NEOSON_API_TOKEN`, e o robô envia o mesmo token (`Authorization: Bearer`). Para
 continuar uma conversa, use `--show-session` e depois `--session-id <id>`.
 
