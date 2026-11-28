@@ -28,3 +28,4 @@ Exemplo: `ADR-001-monolito-modular.md`.
 | [ADR-018](ADR-018-Web-Fetch.md) | Leitura de páginas web com proteção de rede e aprovação | accepted |
 | [ADR-019](ADR-019-Document-Ingestion.md) | Ingestão de documentos de texto para o vault e o grafo | accepted |
 | [ADR-021](ADR-021-Multimodal-Ingestion.md) | Ingestão de PDFs e imagens com extração local primeiro | accepted |
+| [ADR-022](ADR-022-Pi-Core-Compute-Node.md) | Pi como núcleo e notebook de processamento | proposed |
